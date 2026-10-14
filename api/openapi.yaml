@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: Scheduler API
+  version: 0.1.0
+  description: Task planner API. Source of truth for the Go server and the TS client.
+servers:
+  - url: /api/v1
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness and database readiness probe
+      tags: [system]
+      responses:
+        "200":
+          description: Service is up and the database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Database is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
