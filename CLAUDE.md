@@ -31,7 +31,26 @@ docs/              требования, архитектура, план
 
 ## Команды
 
-Раздел заполняется на этапе 0 вместе с каркасом.
+Все команды запускаются из корня через `make`; `/usr/local/go/bin` и `./bin` Makefile добавляет в PATH сам.
+
+| Команда | Что делает |
+|---|---|
+| `make install` | `npm ci` во `frontend/` |
+| `make tools` | ставит в `bin/` sqlc, oapi-codegen и golangci-lint нужных версий (`bin/` не коммитится; нужен `GOPROXY=direct`, это уже прописано) |
+| `make gen` | `api/openapi.yaml` → Go (`oapi-codegen`) и TS (`openapi-typescript`); `queries/` + `migrations/` → Go (`sqlc`). Сгенерированные файлы коммитим |
+| `make lint` | golangci-lint, eslint, `tsc`, проверка prettier |
+| `make test` | поднимает dev-БД, затем `go test` (с `TEST_DATABASE_URL`) и Vitest |
+| `make build` | бинарник `bin/scheduler` и `frontend/dist` |
+| `make dev-db` | Postgres 18 на `127.0.0.1:5433` (`docker-compose.dev.yml`) |
+| `make dev` / `make dev-web` | бэкенд на `127.0.0.1:8081` / Vite с прокси `/api` на бэкенд |
+
+Нюансы:
+
+- Go-тесты с БД берут адрес из `TEST_DATABASE_URL`; без неё они пропускаются. Каждому тесту `testutil.NewDB` выдаёт отдельную схему и удаляет её по окончании.
+- Новая миграция — SQL-файл `backend/migrations/NNNNN_name.sql` с секциями `-- +goose Up` / `-- +goose Down`. CLI `goose` не нужен: миграции применяются из бинарника при старте. Пока миграций нет, `sqlc generate` пропускается.
+- Прокси Go (`proxy.golang.org`) на сервере отвечает 403 на часть модулей (например, `modernc.org/sqlite`). Из-за этого `go mod tidy` ругается на тесты зависимостей: запускай `go mod tidy -e`.
+- TypeScript закреплён на 5.9: `openapi-typescript` пока не поддерживает 6.
+- Проверка `http://127.0.0.1:8081/api/v1/healthz` — liveness и доступность БД.
 
 Go на сервере установлен в `/usr/local/go/bin`, но в неинтерактивном shell его нет в PATH. Перед вызовом `go` выполняй `export PATH=$PATH:/usr/local/go/bin`. Системный Go — 1.23.4; модуль требует 1.27, и нужный toolchain скачивается автоматически.
 

@@ -4,12 +4,12 @@
 
 ## Этап 0. Каркас
 
-- [ ] Go: модуль на Go 1.27, проверить автоматическое скачивание toolchain (системный Go — 1.23.4)
-- [ ] Монорепо: `backend/`, `frontend/`, `api/`, `docs/`, `Makefile`, `.env.example`, `docker-compose.dev.yml` (Postgres на 127.0.0.1:5433)
-- [ ] Backend: конфиг из env, `slog`, `/healthz`, goose-миграции, pgx, кодогенерация sqlc и oapi-codegen
-- [ ] Frontend: Vite + React + TS (strict), Tailwind, TanStack Query, React Router, адаптер платформы (telegram/browser), тема Telegram, генерация TS-типов из OpenAPI
-- [ ] Линтеры и форматтеры (golangci-lint, eslint, prettier), команды `make gen / lint / test`
-- [ ] Заполнить раздел «Команды» в `CLAUDE.md`
+- [x] Go: модуль на Go 1.27, проверить автоматическое скачивание toolchain (системный Go — 1.23.4)
+- [x] Монорепо: `backend/`, `frontend/`, `api/`, `docs/`, `Makefile`, `.env.example`, `docker-compose.dev.yml` (Postgres на 127.0.0.1:5433)
+- [x] Backend: конфиг из env, `slog`, `/api/v1/healthz`, goose-миграции, pgx, кодогенерация sqlc и oapi-codegen
+- [x] Frontend: Vite + React + TS (strict), Tailwind, TanStack Query, React Router, адаптер платформы (telegram/browser), тема Telegram, генерация TS-типов из OpenAPI
+- [x] Линтеры и форматтеры (golangci-lint, eslint, prettier), команды `make gen / lint / test`
+- [x] Заполнить раздел «Команды» в `CLAUDE.md`
 
 ## Этап 1. Вход и настройки (FR-1)
 
