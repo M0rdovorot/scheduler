@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
+import { json, net, type StubRequest } from '@/test/fetchStub'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { User } from '@/api/types'
 import { useAuthStore } from '@/api/authStore'
 import { App } from './App'
@@ -11,43 +12,16 @@ import { setupApi } from '@/api/setup'
 import { createBrowserPlatform } from '@/platform/browser'
 import { PlatformContext } from '@/platform/context'
 
-// openapi-fetch captures fetch when the client is created, so stub it before imports.
-const net = vi.hoisted(() => {
-  const state = {
-    handler: ((): Response => new Response(null, { status: 500 })) as (req: {
-      method: string
-      path: string
-      body: unknown
-    }) => Response,
-    calls: [] as { method: string; path: string; body: unknown; auth: string | null }[],
-  }
-  vi.stubGlobal('fetch', async (input: Request) => {
-    const text = await input.clone().text()
-    const call = {
-      method: input.method,
-      path: new URL(input.url).pathname,
-      body: text ? (JSON.parse(text) as unknown) : undefined,
-      auth: input.headers.get('Authorization'),
-    }
-    state.calls.push(call)
-    return state.handler(call)
-  })
-  return state
-})
-
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
 let user: User
 
-function apiServer(req: { method: string; path: string; body: unknown }): Response {
+function apiServer(req: StubRequest): Response {
   switch (`${req.method} ${req.path}`) {
-    case 'POST /api/v1/auth/dev':
+    case 'POST /auth/dev':
       return json(200, { token: 't1', expires_at: '2030-01-01T00:00:00Z', user })
-    case 'PATCH /api/v1/me/settings':
+    case 'PATCH /me/settings':
       user = { ...user, ...(req.body as Partial<User>) }
       return json(200, user)
-    case 'GET /api/v1/me':
+    case 'GET /me':
       return json(200, user)
     default:
       return json(404, { code: 'not_found', message: 'not found' })
@@ -104,10 +78,10 @@ describe('app', () => {
     renderApp('/')
 
     expect(await screen.findByText(/Здравствуйте, Ann/)).toBeTruthy()
-    expect(net.calls[0]).toMatchObject({ method: 'POST', path: '/api/v1/auth/dev' })
+    expect(net.calls[0]).toMatchObject({ method: 'POST', path: '/auth/dev' })
     expect((net.calls[0]?.body as { timezone: string }).timezone).toBeTruthy()
     // The user from the login response is reused: no extra /me request.
-    expect(net.calls.some((c) => c.path === '/api/v1/me')).toBe(false)
+    expect(net.calls.some((c) => c.path === '/me')).toBe(false)
   })
 
   it('saves only the changed settings, sending the session token', async () => {
@@ -164,7 +138,7 @@ describe('app', () => {
     const slot = await screen.findByLabelText('Размер слота')
     let logins = 0
     net.handler = (req) => {
-      if (req.path === '/api/v1/auth/dev') {
+      if (req.path === '/auth/dev') {
         logins++
         return json(200, { token: 't2', expires_at: '2030-01-01T00:00:00Z', user })
       }
