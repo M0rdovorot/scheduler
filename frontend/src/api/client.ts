@@ -1,4 +1,10 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './schema.gen'
 
-export const api = createClient<paths>({ baseUrl: '/api/v1' })
+// An absolute URL, because Request (and so fetch) outside a browser rejects relative ones.
+const baseUrl = typeof location === 'undefined' ? '/api/v1' : `${location.origin}/api/v1`
+
+export const api = createClient<paths>({ baseUrl })
+
+/** Endpoints that need no session; keep in sync with `security: []` in openapi.yaml. */
+export const publicPaths = ['/healthz', '/auth/telegram', '/auth/dev'] as const

@@ -1,13 +1,18 @@
 import { Route, Routes } from 'react-router'
-import { StatusPage } from '@/features/system/StatusPage'
+import { HomePage } from '@/features/home/HomePage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
+import { AuthGate } from './AuthGate'
 import { Layout } from './Layout'
 
 export function App() {
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<StatusPage />} />
-      </Route>
-    </Routes>
+    <AuthGate>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<HomePage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+      </Routes>
+    </AuthGate>
   )
 }

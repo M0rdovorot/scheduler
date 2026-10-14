@@ -42,7 +42,7 @@ docs/              требования, архитектура, план
 | `make test` | поднимает dev-БД, затем `go test` (с `TEST_DATABASE_URL`) и Vitest |
 | `make build` | бинарник `bin/scheduler` и `frontend/dist` |
 | `make dev-db` | Postgres 18 на `127.0.0.1:5433` (`docker-compose.dev.yml`) |
-| `make dev` / `make dev-web` | бэкенд на `127.0.0.1:8081` / Vite с прокси `/api` на бэкенд |
+| `make dev` / `make dev-web` | бэкенд на `127.0.0.1:8081` (с `DEV_AUTH=true`) / Vite с прокси `/api` на бэкенд |
 
 Нюансы:
 

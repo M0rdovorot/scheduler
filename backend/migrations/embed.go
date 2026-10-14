@@ -3,8 +3,7 @@ package migrations
 
 import "embed"
 
-// FS holds the migration files. .gitkeep keeps the directory non-empty until
-// the first migration is added.
+// FS holds the goose migration files.
 //
-//go:embed *
+//go:embed *.sql
 var FS embed.FS
