@@ -18,6 +18,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
 
 const (
@@ -93,10 +94,10 @@ func (s *Service) LoginDev(ctx context.Context, key, displayName, timezone strin
 		key = "dev"
 	}
 	if utf8.RuneCountInString(key) > maxDevKeyLen {
-		return Session{}, &user.ValidationError{Field: "key", Message: "too long"}
+		return Session{}, &validation.Error{Field: "key", Message: "too long"}
 	}
 	if utf8.RuneCountInString(displayName) > maxDevNameLen {
-		return Session{}, &user.ValidationError{Field: "display_name", Message: "too long"}
+		return Session{}, &validation.Error{Field: "display_name", Message: "too long"}
 	}
 	if displayName == "" {
 		displayName = "Dev " + key

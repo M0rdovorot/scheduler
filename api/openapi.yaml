@@ -11,6 +11,7 @@ tags:
   - name: system
   - name: auth
   - name: me
+  - name: categories
 paths:
   /healthz:
     get:
@@ -111,7 +112,162 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /categories:
+    get:
+      operationId: listCategories
+      summary: All categories of the user, archived ones included
+      description: A flat list; build the tree from `parent_id`.
+      tags: [categories]
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createCategory
+      summary: Create a category
+      tags: [categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryRequest"
+      responses:
+        "201":
+          description: Created category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /categories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/CategoryId"
+    patch:
+      operationId: updateCategory
+      summary: Rename or recolor a category; omitted fields stay as they are
+      tags: [categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryRequest"
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteCategory
+      summary: Delete a category together with all its subcategories
+      description: |
+        The deleted categories are removed from all tasks. Tasks themselves are kept.
+      tags: [categories]
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /categories/{id}/move:
+    post:
+      operationId: moveCategory
+      summary: Move a category to another parent or to the top level
+      description: |
+        Error codes: `category_cycle` (the new parent is the category itself or
+        one of its descendants), `parent_archived`.
+      tags: [categories]
+      parameters:
+        - $ref: "#/components/parameters/CategoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveCategoryRequest"
+      responses:
+        "200":
+          description: Moved category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /categories/{id}/archive:
+    post:
+      operationId: archiveCategory
+      summary: Archive a category together with all its subcategories
+      tags: [categories]
+      parameters:
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "200":
+          description: Archived category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /categories/{id}/unarchive:
+    post:
+      operationId: unarchiveCategory
+      summary: Restore one archived category
+      description: |
+        Its subcategories stay archived. Fails with `parent_archived` while
+        the parent is archived.
+      tags: [categories]
+      parameters:
+        - $ref: "#/components/parameters/CategoryId"
+      responses:
+        "200":
+          description: Restored category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
+  parameters:
+    CategoryId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   securitySchemes:
     bearerAuth:
       type: http
@@ -239,3 +395,58 @@ components:
           type: integer
           minimum: 0
           maximum: 1440
+    Category:
+      type: object
+      required: [id, parent_id, name, color, archived_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null for top-level categories
+        name:
+          type: string
+        color:
+          type: string
+          pattern: "^#[0-9a-f]{6}$"
+          example: "#3b82f6"
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+    CreateCategoryRequest:
+      type: object
+      required: [name, color]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          description: Hex color `#rrggbb`
+          example: "#3b82f6"
+        parent_id:
+          type: string
+          format: uuid
+          description: Omit for a top-level category
+    UpdateCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          type: string
+          description: Hex color `#rrggbb`
+    MoveCategoryRequest:
+      type: object
+      properties:
+        parent_id:
+          type: string
+          format: uuid
+          description: New parent; omit to move the category to the top level

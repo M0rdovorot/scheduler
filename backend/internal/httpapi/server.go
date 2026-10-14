@@ -13,7 +13,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
+	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
 
 const (
@@ -29,9 +31,10 @@ type Pinger interface {
 
 // Deps are the services the API needs.
 type Deps struct {
-	DB    Pinger
-	Auth  *auth.Service
-	Users *user.Service
+	DB         Pinger
+	Auth       *auth.Service
+	Users      *user.Service
+	Categories *category.Service
 }
 
 // Server implements StrictServerInterface.
@@ -69,7 +72,14 @@ func NewRouter(srv *Server, log *slog.Logger) http.Handler {
 			writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		},
 	})
-	return HandlerFromMuxWithBaseURL(strict, r, basePath)
+	return HandlerWithOptions(strict, ChiServerOptions{
+		BaseURL:    basePath,
+		BaseRouter: r,
+		// Malformed path or query parameters.
+		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid request parameters")
+		},
+	})
 }
 
 func (s *Server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
@@ -83,7 +93,7 @@ func (s *Server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHe
 
 func (s *Server) LoginTelegram(ctx context.Context, req LoginTelegramRequestObject) (LoginTelegramResponseObject, error) {
 	sess, err := s.Auth.LoginTelegram(ctx, req.Body.InitData, req.Body.Timezone)
-	var verr *user.ValidationError
+	var verr *validation.Error
 	switch {
 	case errors.As(err, &verr):
 		return LoginTelegram400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
@@ -107,7 +117,7 @@ func (s *Server) LoginDev(ctx context.Context, req LoginDevRequestObject) (Login
 		key = *req.Body.Key
 	}
 	sess, err := s.Auth.LoginDev(ctx, key, name, req.Body.Timezone)
-	var verr *user.ValidationError
+	var verr *validation.Error
 	switch {
 	case errors.Is(err, auth.ErrDevAuthDisabled):
 		return LoginDev404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "not found"}}, nil
@@ -145,7 +155,7 @@ func (s *Server) UpdateMySettings(ctx context.Context, req UpdateMySettingsReque
 	}
 
 	u, err := s.Users.UpdateSettings(ctx, userID(ctx), patch)
-	var verr *user.ValidationError
+	var verr *validation.Error
 	switch {
 	case errors.As(err, &verr):
 		return UpdateMySettings400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
@@ -172,8 +182,12 @@ func toSession(s auth.Session) Session {
 	return Session{Token: s.Token, ExpiresAt: s.ExpiresAt, User: toUser(s.User)}
 }
 
-func validationError(e *user.ValidationError) Error {
-	return Error{Code: "validation_failed", Message: e.Error(), Field: &e.Field}
+func validationError(e *validation.Error) Error {
+	out := Error{Code: e.ErrorCode(), Message: e.Error()}
+	if e.Field != "" {
+		out.Field = &e.Field
+	}
+	return out
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

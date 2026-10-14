@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
+	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
@@ -39,7 +40,8 @@ func newTestAPI(t *testing.T, devAuth bool) *testAPI {
 			BotToken: botToken, DevAuth: devAuth,
 			SessionTTL: time.Hour, InitDataMaxAge: time.Hour,
 		}),
-		Users: user.NewService(st),
+		Users:      user.NewService(st),
+		Categories: category.NewService(st),
 	})
 	return &testAPI{t: t, handler: NewRouter(srv, slog.New(slog.NewTextHandler(io.Discard, nil)))}
 }

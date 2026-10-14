@@ -12,7 +12,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
-	"github.com/m0rdovorot/scheduler/backend/internal/user"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
 )
 
@@ -89,7 +89,7 @@ func TestLoginTelegramRejects(t *testing.T) {
 	}
 
 	svc.cfg.BotToken = testBotToken
-	var verr *user.ValidationError
+	var verr *validation.Error
 	if _, err := svc.LoginTelegram(ctx, testInitData, "Mars/Olympus"); !errors.As(err, &verr) {
 		t.Errorf("bad timezone: err = %v, want ValidationError", err)
 	}
@@ -151,7 +151,7 @@ func TestLoginDev(t *testing.T) {
 			t.Errorf("names = %q, %q", a.User.DisplayName, b.User.DisplayName)
 		}
 
-		var verr *user.ValidationError
+		var verr *validation.Error
 		if _, err := svc.LoginDev(ctx, strings.Repeat("k", 65), "", "UTC"); !errors.As(err, &verr) {
 			t.Errorf("long key: err = %v, want ValidationError", err)
 		}

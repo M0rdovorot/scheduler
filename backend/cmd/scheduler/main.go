@@ -14,6 +14,7 @@ import (
 	_ "time/tzdata" // IANA zones must not depend on the host's tzdata
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
+	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
@@ -61,7 +62,8 @@ func run() error {
 			SessionTTL:     cfg.SessionTTL,
 			InitDataMaxAge: cfg.InitDataMaxAge,
 		}),
-		Users: user.NewService(st),
+		Users:      user.NewService(st),
+		Categories: category.NewService(st),
 	})
 
 	srv := &http.Server{

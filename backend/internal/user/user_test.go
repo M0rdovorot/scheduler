@@ -10,6 +10,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
 )
 
@@ -44,7 +45,7 @@ func TestSettingsPatchValidate(t *testing.T) {
 				}
 				return
 			}
-			var verr *user.ValidationError
+			var verr *validation.Error
 			if !errors.As(err, &verr) || verr.Field != tt.wantField {
 				t.Fatalf("err = %v, want ValidationError on %q", err, tt.wantField)
 			}

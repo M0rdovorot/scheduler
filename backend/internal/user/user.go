@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
 
 const (
@@ -50,14 +51,6 @@ func FromRow(r store.User) User {
 	}
 }
 
-// ValidationError describes an invalid input field.
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e *ValidationError) Error() string { return e.Field + ": " + e.Message }
-
 // SettingsPatch holds the settings to change; nil fields are left as is.
 type SettingsPatch struct {
 	Timezone                  *string
@@ -69,10 +62,10 @@ type SettingsPatch struct {
 // ValidateTimezone accepts only IANA zone names that the runtime knows.
 func ValidateTimezone(name string) error {
 	if name == "" || name == "Local" {
-		return &ValidationError{Field: "timezone", Message: "must be an IANA time zone name"}
+		return &validation.Error{Field: "timezone", Message: "must be an IANA time zone name"}
 	}
 	if _, err := time.LoadLocation(name); err != nil {
-		return &ValidationError{Field: "timezone", Message: "unknown time zone"}
+		return &validation.Error{Field: "timezone", Message: "unknown time zone"}
 	}
 	return nil
 }
@@ -84,13 +77,13 @@ func (p SettingsPatch) Validate() error {
 		}
 	}
 	if p.SlotMinutes != nil && !slices.Contains(SlotMinutesOptions, *p.SlotMinutes) {
-		return &ValidationError{Field: "slot_minutes", Message: "must be one of 5, 10, 15, 30, 60"}
+		return &validation.Error{Field: "slot_minutes", Message: "must be one of 5, 10, 15, 30, 60"}
 	}
 	if p.DefaultView != nil && !slices.Contains(ViewOptions, *p.DefaultView) {
-		return &ValidationError{Field: "default_view", Message: "must be one of day, three_days, week"}
+		return &validation.Error{Field: "default_view", Message: "must be one of day, three_days, week"}
 	}
 	if t := p.DeviationThresholdMinutes; t != nil && (*t < 0 || *t > MaxDeviationThresholdMinutes) {
-		return &ValidationError{
+		return &validation.Error{
 			Field:   "deviation_threshold_minutes",
 			Message: fmt.Sprintf("must be between 0 and %d", MaxDeviationThresholdMinutes),
 		}
