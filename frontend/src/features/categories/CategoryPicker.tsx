@@ -21,10 +21,13 @@ export function CategoryPicker({
   label = 'Категории',
 }: CategoryPickerProps) {
   const groupId = useId()
+  // Build the tree from the visible categories only: a selected archived child
+  // whose archived parent is hidden then sits at the top level instead of
+  // hanging, indented, under an unrelated row.
   const rows = useMemo(
     () =>
-      flattenTree(buildTree(categories)).filter(
-        ({ category }) => category.archived_at === null || value.includes(category.id),
+      flattenTree(
+        buildTree(categories.filter((c) => c.archived_at === null || value.includes(c.id))),
       ),
     [categories, value],
   )

@@ -1,6 +1,11 @@
 // Package validation holds the error type for rejected user input.
 package validation
 
+import (
+	"strings"
+	"unicode/utf8"
+)
+
 // CodeFailed is the code of a generic validation error.
 const CodeFailed = "validation_failed"
 
@@ -25,4 +30,10 @@ func (e *Error) ErrorCode() string {
 		return CodeFailed
 	}
 	return e.Code
+}
+
+// ValidText reports whether s can be stored in a PostgreSQL text column:
+// valid UTF-8 and no NUL characters.
+func ValidText(s string) bool {
+	return utf8.ValidString(s) && !strings.ContainsRune(s, 0)
 }

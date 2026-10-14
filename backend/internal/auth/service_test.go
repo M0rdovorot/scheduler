@@ -158,6 +158,12 @@ func TestLoginDev(t *testing.T) {
 		if _, err := svc.LoginDev(ctx, "", strings.Repeat("n", 101), "UTC"); !errors.As(err, &verr) {
 			t.Errorf("long name: err = %v, want ValidationError", err)
 		}
+		if _, err := svc.LoginDev(ctx, "k\x00", "", "UTC"); !errors.As(err, &verr) {
+			t.Errorf("NUL in key: err = %v, want a validation error", err)
+		}
+		if _, err := svc.LoginDev(ctx, "", "n\x00", "UTC"); !errors.As(err, &verr) {
+			t.Errorf("NUL in name: err = %v, want a validation error", err)
+		}
 		// The limits count characters, not bytes: 64 Cyrillic letters are fine.
 		if _, err := svc.LoginDev(ctx, strings.Repeat("ж", 64), "", "UTC"); err != nil {
 			t.Errorf("64-character key: %v", err)

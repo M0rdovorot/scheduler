@@ -1,4 +1,7 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
+
+// Open dialogs, topmost last: Escape closes only the top one.
+const openDialogs: symbol[] = []
 
 interface DialogProps {
   title: string
@@ -8,13 +11,23 @@ interface DialogProps {
 
 /** A modal sheet: bottom-aligned on phones, centred on wide screens. */
 export function Dialog({ title, onClose, children }: DialogProps) {
+  const onCloseRef = useRef(onClose)
   useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
+  useEffect(() => {
+    const id = Symbol('dialog')
+    openDialogs.push(id)
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && openDialogs[openDialogs.length - 1] === id) onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      openDialogs.splice(openDialogs.indexOf(id), 1)
+    }
+  }, [])
 
   return (
     <div

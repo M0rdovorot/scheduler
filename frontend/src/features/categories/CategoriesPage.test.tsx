@@ -100,17 +100,17 @@ function server(req: StubRequest): Response {
 const platform = createBrowserPlatform()
 
 function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <PlatformContext.Provider value={platform}>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
+      <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/categories']}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>
     </PlatformContext.Provider>,
   )
+  return { queryClient }
 }
 
 const dialog = () => screen.findByRole('dialog')
@@ -195,9 +195,10 @@ describe('categories page', () => {
     await ui.click(form.getByRole('button', { name: 'Сохранить' }))
 
     await screen.findByRole('button', { name: 'Пробежка' })
+    // The move goes first: it is the step the server can refuse.
     expect(mutations()).toMatchObject([
-      { method: 'PATCH', path: '/categories/c', body: { name: 'Пробежка' } },
       { method: 'POST', path: '/categories/c/move', body: { parent_id: 'b' } },
+      { method: 'PATCH', path: '/categories/c', body: { name: 'Пробежка' } },
     ])
     expect(store.find((c) => c.id === 'c')?.parent_id).toBe('b')
   })
@@ -315,5 +316,98 @@ describe('categories page', () => {
       'Без родителя (верхний уровень)',
       'Живое',
     ])
+  })
+
+  it('keeps the rename out of a save whose move was refused', async () => {
+    store = [cat('a', 'Спорт'), cat('b', 'Работа'), cat('c', 'Бег', 'a')]
+    failNext = json(400, { code: 'parent_archived', message: 'x', field: 'parent_id' })
+    const ui = userEvent.setup()
+    renderPage()
+
+    await ui.click(await screen.findByRole('button', { name: 'Бег' }))
+    const form = within(await dialog())
+    await ui.clear(form.getByLabelText('Название'))
+    await ui.type(form.getByLabelText('Название'), 'Пробежка')
+    await ui.selectOptions(form.getByLabelText('Родительская категория'), 'b')
+    await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+
+    expect((await form.findByRole('alert')).textContent).toMatch(/в архиве/)
+    expect(store.find((c) => c.id === 'c')?.name).toBe('Бег')
+    expect(mutations().map((m) => m.method + ' ' + m.path)).toEqual(['POST /categories/c/move'])
+  })
+
+  it('Escape closes only the topmost dialog', async () => {
+    store = [cat('a', 'Спорт')]
+    const ui = userEvent.setup()
+    renderPage()
+
+    await ui.click(await screen.findByRole('button', { name: 'Спорт' }))
+    await ui.click(within(await dialog()).getByRole('button', { name: 'Удалить' }))
+    await screen.findByRole('dialog', { name: 'Удалить категорию?' })
+
+    await ui.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Удалить категорию?' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Категория' })).toBeTruthy()
+
+    await ui.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a failed delete shows its error only in the confirmation and forgets it on cancel', async () => {
+    store = [cat('a', 'Спорт')]
+    const ui = userEvent.setup()
+    renderPage()
+
+    await ui.click(await screen.findByRole('button', { name: 'Спорт' }))
+    const form = within(await dialog())
+    await ui.click(form.getByRole('button', { name: 'Удалить' }))
+    failNext = json(500, {})
+    const confirm = within(await screen.findByRole('dialog', { name: 'Удалить категорию?' }))
+    await ui.click(confirm.getByRole('button', { name: 'Удалить' }))
+
+    expect((await confirm.findByRole('alert')).textContent).toMatch(/Не удалось/)
+    expect(form.queryByRole('alert')).toBeNull()
+
+    await ui.click(confirm.getByRole('button', { name: 'Отмена' }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    await ui.click(form.getByRole('button', { name: 'Удалить' }))
+    expect(
+      within(await screen.findByRole('dialog', { name: 'Удалить категорию?' })).queryByRole(
+        'alert',
+      ),
+    ).toBeNull()
+  })
+
+  it('closes the dialog when the edited category disappears from the list', async () => {
+    store = [cat('a', 'Спорт'), cat('b', 'Работа')]
+    const ui = userEvent.setup()
+    const { queryClient } = renderPage()
+
+    await ui.click(await screen.findByRole('button', { name: 'Спорт' }))
+    await dialog()
+
+    // Deleted on another device; the next refresh no longer lists it.
+    store = store.filter((c) => c.id !== 'a')
+    await queryClient.invalidateQueries({ queryKey: ['categories'] })
+
+    await screen.findByRole('button', { name: 'Работа' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('shows the live state of the edited category, not the one from the click', async () => {
+    store = [cat('a', 'Спорт')]
+    const ui = userEvent.setup()
+    const { queryClient } = renderPage()
+
+    await ui.click(await screen.findByRole('button', { name: 'Спорт' }))
+    const form = within(await dialog())
+    expect(form.getByRole('button', { name: 'В архив' })).toBeTruthy()
+
+    // Archived on another device while the dialog is open.
+    store = [cat('a', 'Спорт', null, true)]
+    await queryClient.invalidateQueries({ queryKey: ['categories'] })
+
+    expect(await form.findByRole('button', { name: 'Вернуть из архива' })).toBeTruthy()
+    expect(form.queryByRole('button', { name: 'В архив' })).toBeNull()
   })
 })

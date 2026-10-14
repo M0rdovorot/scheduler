@@ -62,7 +62,7 @@ export function CategoriesPage() {
             />
             <button
               type="button"
-              onClick={() => setTarget({ mode: 'edit', category })}
+              onClick={() => setTarget({ mode: 'edit', id: category.id })}
               className={`min-w-0 flex-1 truncate py-2 text-left ${category.archived_at ? 'text-hint' : ''}`}
             >
               {category.name}

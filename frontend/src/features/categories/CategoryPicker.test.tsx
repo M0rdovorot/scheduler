@@ -66,6 +66,14 @@ describe('CategoryPicker', () => {
     expect(onChange).toHaveBeenLastCalledWith(['run', 'work'])
   })
 
+  it('puts a selected archived child at the top level when its archived parent is hidden', () => {
+    const tree = [cat('p', 'Спорт', null, true), cat('c', 'Бег', 'p', true), cat('w', 'Работа')]
+    render(<CategoryPicker categories={tree} value={['c']} onChange={() => {}} />)
+    const items = screen.getAllByRole('listitem')
+    expect(items.map((li) => li.textContent)).toEqual(['Бег (в архиве)', 'Работа'])
+    expect(items.every((li) => (li as HTMLElement).style.paddingLeft === '0px')).toBe(true)
+  })
+
   it('allows an empty selection (a task may have no category)', async () => {
     const ui = userEvent.setup()
     const onChange = vi.fn()

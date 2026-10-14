@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   useArchiveCategory,
   useCreateCategory,
@@ -24,8 +24,7 @@ import { categoryErrorMessage } from './messages'
 import { defaultColor } from './palette'
 import { countDescendants, findNode, parentOptions, type CategoryNode } from './tree'
 
-export type FormTarget =
-  { mode: 'create'; parentId: string | null } | { mode: 'edit'; category: Category }
+export type FormTarget = { mode: 'create'; parentId: string | null } | { mode: 'edit'; id: string }
 
 interface CategoryFormProps {
   target: FormTarget
@@ -35,7 +34,38 @@ interface CategoryFormProps {
 
 const fieldClass = 'mt-1 w-full rounded-xl border border-separator bg-surface px-3 py-2'
 
+/**
+ * Create/edit dialog. An edited category is looked up in the live list by id, so
+ * background refreshes (and changes from another device) are never shown stale.
+ */
 export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
+  const editing = target.mode === 'edit' ? findNode(forest, target.id)?.category : undefined
+  const gone = target.mode === 'edit' && !editing
+
+  // The category was deleted elsewhere: nothing left to edit.
+  useEffect(() => {
+    if (gone) onClose()
+  }, [gone, onClose])
+
+  if (gone) return null
+  return (
+    <CategoryFormBody
+      initialParentId={target.mode === 'create' ? target.parentId : null}
+      editing={editing}
+      forest={forest}
+      onClose={onClose}
+    />
+  )
+}
+
+interface CategoryFormBodyProps {
+  initialParentId: string | null
+  editing: Category | undefined
+  forest: readonly CategoryNode[]
+  onClose: () => void
+}
+
+function CategoryFormBody({ initialParentId, editing, forest, onClose }: CategoryFormBodyProps) {
   const platform = usePlatform()
   const create = useCreateCategory()
   const update = useUpdateCategory()
@@ -44,17 +74,13 @@ export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
   const unarchive = useUnarchiveCategory()
   const remove = useDeleteCategory()
 
-  const editing = target.mode === 'edit' ? target.category : null
   const [draft, setDraft] = useState<CategoryDraft>(() =>
     editing
       ? draftFromCategory(editing)
-      : {
-          name: '',
-          color: defaultColor,
-          parentId: target.mode === 'create' ? (target.parentId ?? '') : '',
-        },
+      : { name: '', color: defaultColor, parentId: initialParentId ?? '' },
   )
   const [error, setError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const errors = validateDraft(draft)
@@ -74,15 +100,18 @@ export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
   const node = editing ? findNode(forest, editing.id) : undefined
   const descendants = node ? countDescendants(node) : 0
 
-  async function run(action: () => Promise<unknown>, closeAfter = true) {
-    setError(null)
+  async function run(
+    action: () => Promise<unknown>,
+    setFailure: (message: string | null) => void = setError,
+  ) {
+    setFailure(null)
     try {
       await action()
       platform.haptic.notify('success')
-      if (closeAfter) onClose()
+      onClose()
     } catch (e) {
       platform.haptic.notify('error')
-      setError(categoryErrorMessage(e))
+      setFailure(categoryErrorMessage(e))
     }
   }
 
@@ -98,11 +127,14 @@ export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
         })
         return
       }
-      if (Object.keys(changes.update).length > 0) {
-        await update.mutateAsync({ id: editing.id, ...changes.update })
-      }
+      // The move goes first: it is the step the server can still refuse (cycle,
+      // archived parent); name and color were already checked, so a half-applied
+      // save is unlikely.
       if (changes.move) {
         await move.mutateAsync({ id: editing.id, parentId: changes.move.parentId })
+      }
+      if (Object.keys(changes.update).length > 0) {
+        await update.mutateAsync({ id: editing.id, ...changes.update })
       }
     })
   }
@@ -190,7 +222,10 @@ export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
             <button
               type="button"
               disabled={busy}
-              onClick={() => setConfirmingDelete(true)}
+              onClick={() => {
+                setError(null)
+                setConfirmingDelete(true)
+              }}
               className="flex-1 rounded-xl bg-surface px-4 py-3 text-danger disabled:opacity-50"
             >
               Удалить
@@ -207,9 +242,12 @@ export function CategoryForm({ target, forest, onClose }: CategoryFormProps) {
           title="Удалить категорию?"
           confirmLabel="Удалить"
           pending={remove.isPending}
-          error={error}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={() => void run(() => remove.mutateAsync(editing.id))}
+          error={deleteError}
+          onCancel={() => {
+            setConfirmingDelete(false)
+            setDeleteError(null)
+          }}
+          onConfirm={() => void run(() => remove.mutateAsync(editing.id), setDeleteError)}
         >
           <p>Категория «{editing.name}» будет удалена и снята со всех дел. Сами дела останутся.</p>
           {descendants > 0 && (

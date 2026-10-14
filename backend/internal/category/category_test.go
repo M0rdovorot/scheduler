@@ -99,6 +99,8 @@ func TestCreateValidation(t *testing.T) {
 	}{
 		{"empty name", category.CreateInput{Name: "  ", Color: "#aabbcc"}, "name"},
 		{"long name", category.CreateInput{Name: strings.Repeat("я", 101), Color: "#aabbcc"}, "name"},
+		{"NUL character", category.CreateInput{Name: "a\x00b", Color: "#aabbcc"}, "name"},
+		{"invalid UTF-8", category.CreateInput{Name: "a\xffb", Color: "#aabbcc"}, "name"},
 		{"bad color", category.CreateInput{Name: "x", Color: "red"}, "color"},
 		{"short hex", category.CreateInput{Name: "x", Color: "#abc"}, "color"},
 		{"unknown parent", category.CreateInput{Name: "x", Color: "#aabbcc", ParentID: &missing}, "parent_id"},
@@ -346,5 +348,35 @@ func TestConcurrentOppositeMovesNeverCreateCycle(t *testing.T) {
 		// Reset for the next round.
 		_, _ = e.svc.Move(ctx, e.user, a.ID, nil)
 		_, _ = e.svc.Move(ctx, e.user, b.ID, nil)
+	}
+}
+
+func TestConcurrentDeleteAndCreateUnderParent(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+
+	for range 20 {
+		parent := e.create("P", nil)
+		var wg sync.WaitGroup
+		var createErr, deleteErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, createErr = e.svc.Create(ctx, e.user, category.CreateInput{Name: "c", Color: "#aabbcc", ParentID: &parent.ID})
+		}()
+		go func() { defer wg.Done(); deleteErr = e.svc.Delete(ctx, e.user, parent.ID) }()
+		wg.Wait()
+
+		// Whichever wins, the loser gets a clean domain error, never a raw database error.
+		var verr *validation.Error
+		if createErr != nil && !errors.As(createErr, &verr) {
+			t.Fatalf("create under a deleted parent: %v, want a validation error", createErr)
+		}
+		if deleteErr != nil {
+			t.Fatalf("delete: %v", deleteErr)
+		}
+		if n := len(e.byID()); n != 0 {
+			t.Fatalf("%d categories left after delete of their root", n)
+		}
 	}
 }

@@ -93,6 +93,12 @@ func (s *Service) LoginDev(ctx context.Context, key, displayName, timezone strin
 	if key == "" {
 		key = "dev"
 	}
+	if !validation.ValidText(key) {
+		return Session{}, &validation.Error{Field: "key", Message: "contains invalid characters"}
+	}
+	if !validation.ValidText(displayName) {
+		return Session{}, &validation.Error{Field: "display_name", Message: "contains invalid characters"}
+	}
 	if utf8.RuneCountInString(key) > maxDevKeyLen {
 		return Session{}, &validation.Error{Field: "key", Message: "too long"}
 	}

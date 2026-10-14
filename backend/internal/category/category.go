@@ -92,16 +92,23 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 		return Category{}, err
 	}
 
+	params := store.CreateCategoryParams{UserID: userID, ParentID: nullUUID(in.ParentID), Name: name, Color: color}
+
+	// A top-level category has no parent to check, so it needs no lock.
+	if in.ParentID == nil {
+		row, err := s.store.CreateCategory(ctx, params)
+		if err != nil {
+			return Category{}, fmt.Errorf("create category: %w", err)
+		}
+		return fromRow(row), nil
+	}
+
 	var row store.Category
 	err = s.inTx(ctx, userID, func(q *store.Queries) error {
-		if in.ParentID != nil {
-			if _, err := getActive(ctx, q, userID, *in.ParentID, "parent_id"); err != nil {
-				return err
-			}
+		if _, err := getActive(ctx, q, userID, *in.ParentID, "parent_id"); err != nil {
+			return err
 		}
-		row, err = q.CreateCategory(ctx, store.CreateCategoryParams{
-			UserID: userID, ParentID: nullUUID(in.ParentID), Name: name, Color: color,
-		})
+		row, err = q.CreateCategory(ctx, params)
 		if err != nil {
 			return fmt.Errorf("create category: %w", err)
 		}
@@ -239,14 +246,18 @@ func (s *Service) Unarchive(ctx context.Context, userID, id uuid.UUID) (Category
 
 // Delete removes the category together with all its subcategories.
 func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID) error {
-	n, err := s.store.DeleteCategory(ctx, store.DeleteCategoryParams{ID: id, UserID: userID})
-	if err != nil {
-		return fmt.Errorf("delete category: %w", err)
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	// Under the lock, so that it cannot race with a create or move under the
+	// category being deleted.
+	return s.inTx(ctx, userID, func(q *store.Queries) error {
+		n, err := q.DeleteCategory(ctx, store.DeleteCategoryParams{ID: id, UserID: userID})
+		if err != nil {
+			return fmt.Errorf("delete category: %w", err)
+		}
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // inTx runs fn in a transaction holding the user's category lock, so that
@@ -292,6 +303,9 @@ func errParentArchived() error {
 
 func normalizeName(name string) (string, error) {
 	name = strings.TrimSpace(name)
+	if !validation.ValidText(name) {
+		return "", &validation.Error{Field: "name", Message: "contains invalid characters"}
+	}
 	if n := utf8.RuneCountInString(name); n < 1 || n > maxNameLen {
 		return "", &validation.Error{Field: "name", Message: fmt.Sprintf("must be 1 to %d characters", maxNameLen)}
 	}
