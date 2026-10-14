@@ -37,21 +37,40 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt time.Time
 	return err
 }
 
-const touchSession = `-- name: TouchSession :one
-UPDATE sessions
-SET last_used_at = $1
-WHERE token_hash = $2 AND expires_at > $1
-RETURNING user_id
+const getActiveSession = `-- name: GetActiveSession :one
+SELECT id, user_id, last_used_at
+FROM sessions
+WHERE token_hash = $1 AND expires_at > $2
+`
+
+type GetActiveSessionParams struct {
+	TokenHash []byte
+	Now       time.Time
+}
+
+type GetActiveSessionRow struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	LastUsedAt time.Time
+}
+
+func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSession, arg.TokenHash, arg.Now)
+	var i GetActiveSessionRow
+	err := row.Scan(&i.ID, &i.UserID, &i.LastUsedAt)
+	return i, err
+}
+
+const touchSession = `-- name: TouchSession :exec
+UPDATE sessions SET last_used_at = $2 WHERE id = $1
 `
 
 type TouchSessionParams struct {
-	Now       time.Time
-	TokenHash []byte
+	ID         uuid.UUID
+	LastUsedAt time.Time
 }
 
-func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, touchSession, arg.Now, arg.TokenHash)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) error {
+	_, err := q.db.Exec(ctx, touchSession, arg.ID, arg.LastUsedAt)
+	return err
 }

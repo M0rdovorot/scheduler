@@ -1,5 +1,5 @@
 import type { SettingsPatch, SlotMinutes, User, ViewMode } from '@/api/types'
-import { isValidTimeZone } from '@/lib/timezone'
+import { normalizeTimeZone } from '@/lib/timezone'
 
 export const slotOptions: readonly SlotMinutes[] = [5, 10, 15, 30, 60]
 
@@ -32,7 +32,7 @@ export function draftFromUser(user: User): SettingsDraft {
 
 export function validateDraft(draft: SettingsDraft): DraftErrors {
   const errors: DraftErrors = {}
-  if (!isValidTimeZone(draft.timezone.trim())) {
+  if (normalizeTimeZone(draft.timezone.trim()) === null) {
     errors.timezone = 'Укажите часовой пояс из списка, например Europe/Moscow'
   }
   const threshold = parseThreshold(draft.deviationThreshold)
@@ -51,8 +51,8 @@ function parseThreshold(text: string): number | null {
 /** Only the fields that differ from the saved user. The draft must be valid. */
 export function buildSettingsPatch(user: User, draft: SettingsDraft): SettingsPatch {
   const patch: SettingsPatch = {}
-  const timezone = draft.timezone.trim()
-  if (timezone !== user.timezone) patch.timezone = timezone
+  const timezone = normalizeTimeZone(draft.timezone.trim())
+  if (timezone !== null && timezone !== user.timezone) patch.timezone = timezone
   if (draft.slotMinutes !== user.slot_minutes) patch.slot_minutes = draft.slotMinutes
   if (draft.defaultView !== user.default_view) patch.default_view = draft.defaultView
   const threshold = parseThreshold(draft.deviationThreshold)

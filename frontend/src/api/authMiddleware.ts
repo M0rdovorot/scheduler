@@ -14,24 +14,29 @@ export interface AuthMiddlewareOptions {
  */
 export function createAuthMiddleware(opts: AuthMiddlewareOptions): Middleware {
   const isPublic = (schemaPath: string) => opts.publicPaths.includes(schemaPath)
-  // A request body can be read only once, so keep a copy for the retry.
-  const copies = new Map<string, Request>()
+  // A request body can be read only once, so keep a copy for the retry,
+  // together with the token the request was sent with.
+  const copies = new Map<string, { copy: Request; token: string | null }>()
 
   return {
     onRequest({ request, schemaPath, id }) {
       if (isPublic(schemaPath)) return
       const token = opts.getToken()
       if (token) request.headers.set('Authorization', `Bearer ${token}`)
-      copies.set(id, request.clone())
+      copies.set(id, { copy: request.clone(), token })
       return request
     },
     async onResponse({ response, schemaPath, id, options }) {
-      const copy = copies.get(id)
+      const sent = copies.get(id)
       copies.delete(id)
-      if (response.status !== 401 || !copy || isPublic(schemaPath)) return
+      if (response.status !== 401 || !sent || isPublic(schemaPath)) return
 
-      const token = await opts.refreshToken()
+      // If another request already signed in while this one was in flight,
+      // reuse that session instead of creating one more.
+      const current = opts.getToken()
+      const token = current && current !== sent.token ? current : await opts.refreshToken()
       if (!token) return
+      const { copy } = sent
       copy.headers.set('Authorization', `Bearer ${token}`)
       return (options.fetch ?? globalThis.fetch)(copy)
     },

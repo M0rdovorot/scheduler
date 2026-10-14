@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,12 @@ const (
 	providerDev      = "dev"
 
 	defaultDisplayName = "Пользователь"
-	maxDevKeyLen       = 64
+	maxDevKeyLen       = 64 // characters
+	maxDevNameLen      = 100
+
+	// touchInterval limits how often last_used_at is written, so that
+	// authenticating a request is normally a plain read.
+	touchInterval = time.Hour
 )
 
 var (
@@ -86,8 +92,11 @@ func (s *Service) LoginDev(ctx context.Context, key, displayName, timezone strin
 	if key == "" {
 		key = "dev"
 	}
-	if len(key) > maxDevKeyLen {
+	if utf8.RuneCountInString(key) > maxDevKeyLen {
 		return Session{}, &user.ValidationError{Field: "key", Message: "too long"}
+	}
+	if utf8.RuneCountInString(displayName) > maxDevNameLen {
+		return Session{}, &user.ValidationError{Field: "display_name", Message: "too long"}
 	}
 	if displayName == "" {
 		displayName = "Dev " + key
@@ -97,17 +106,22 @@ func (s *Service) LoginDev(ctx context.Context, key, displayName, timezone strin
 
 // Authenticate resolves a bearer token to a user id.
 func (s *Service) Authenticate(ctx context.Context, token string) (uuid.UUID, error) {
-	id, err := s.store.TouchSession(ctx, store.TouchSessionParams{
+	now := s.now()
+	sess, err := s.store.GetActiveSession(ctx, store.GetActiveSessionParams{
 		TokenHash: hashToken(token),
-		Now:       s.now(),
+		Now:       now,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, ErrUnauthorized
 	}
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("touch session: %w", err)
+		return uuid.Nil, fmt.Errorf("get session: %w", err)
 	}
-	return id, nil
+	if now.Sub(sess.LastUsedAt) >= touchInterval {
+		// Best effort: failing to record usage must not fail the request.
+		_ = s.store.TouchSession(ctx, store.TouchSessionParams{ID: sess.ID, LastUsedAt: now})
+	}
+	return sess.UserID, nil
 }
 
 type identity struct {
@@ -151,6 +165,15 @@ func (s *Service) loginOnce(ctx context.Context, ident identity, timezone string
 			})
 			if err != nil {
 				return fmt.Errorf("update identity: %w", err)
+			}
+			// Telegram is the source of truth for the name until users can edit it.
+			if ident.provider == providerTelegram && u.DisplayName != ident.displayName {
+				if err := q.UpdateUserDisplayName(ctx, store.UpdateUserDisplayNameParams{
+					ID: u.ID, DisplayName: ident.displayName,
+				}); err != nil {
+					return fmt.Errorf("update display name: %w", err)
+				}
+				u.DisplayName = ident.displayName
 			}
 		case errors.Is(err, pgx.ErrNoRows):
 			if err := user.ValidateTimezone(timezone); err != nil {

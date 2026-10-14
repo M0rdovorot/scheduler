@@ -55,8 +55,14 @@ func NewRouter(srv *Server, log *slog.Logger) http.Handler {
 	r.Use(requireAuth(srv.Auth, log))
 
 	strict := NewStrictHandlerWithOptions(srv, nil, StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
-			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body is too large")
+				return
+			}
+			log.DebugContext(r.Context(), "bad request", "err", err)
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.ErrorContext(r.Context(), "handler error", "err", err)

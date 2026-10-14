@@ -35,9 +35,14 @@ describe('buildSettingsPatch', () => {
     })
   })
 
-  it('trims the time zone', () => {
-    const draft = { ...draftFromUser(user), timezone: ' Asia/Tokyo ' }
+  it('sends the time zone trimmed and in canonical case', () => {
+    const draft = { ...draftFromUser(user), timezone: ' asia/tokyo ' }
     expect(buildSettingsPatch(user, draft)).toEqual({ timezone: 'Asia/Tokyo' })
+  })
+
+  it('treats a differently cased saved time zone as unchanged', () => {
+    const draft = { ...draftFromUser(user), timezone: 'europe/moscow' }
+    expect(buildSettingsPatch(user, draft)).toEqual({})
   })
 })
 

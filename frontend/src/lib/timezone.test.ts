@@ -1,16 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { deviceTimeZone, isValidTimeZone } from './timezone'
+import { deviceTimeZone, normalizeTimeZone } from './timezone'
 
-describe('isValidTimeZone', () => {
-  it.each(['UTC', 'Europe/Moscow', 'America/Argentina/Buenos_Aires'])('accepts %s', (name) => {
-    expect(isValidTimeZone(name)).toBe(true)
+describe('normalizeTimeZone', () => {
+  it.each(['UTC', 'Europe/Moscow', 'Asia/Tokyo'])('keeps %s', (name) => {
+    expect(normalizeTimeZone(name)).toBe(name)
   })
 
-  it.each(['', 'Mars/Olympus', 'moscow time', '+03:00'])('rejects %j', (name) => {
-    expect(isValidTimeZone(name)).toBe(false)
+  it.each([
+    ['europe/moscow', 'Europe/Moscow'],
+    ['EUROPE/MOSCOW', 'Europe/Moscow'],
+    ['utc', 'UTC'],
+  ])('fixes the case of %s', (name, want) => {
+    expect(normalizeTimeZone(name)).toBe(want)
+  })
+
+  it.each(['', 'Mars/Olympus', 'moscow time', '+03:00', '-05:00'])('rejects %j', (name) => {
+    expect(normalizeTimeZone(name)).toBeNull()
   })
 
   it('accepts the device time zone', () => {
-    expect(isValidTimeZone(deviceTimeZone())).toBe(true)
+    expect(normalizeTimeZone(deviceTimeZone())).not.toBeNull()
   })
 })

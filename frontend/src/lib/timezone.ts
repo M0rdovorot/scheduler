@@ -4,16 +4,18 @@ export function deviceTimeZone(): string {
 }
 
 /**
- * True if the runtime recognises name as an IANA time zone. UTC offsets such
- * as "+03:00" are accepted by Intl but not by the server, so they are rejected.
+ * Returns the canonical spelling of an IANA time zone name, or null if the
+ * runtime does not know it. Intl matches names case-insensitively while the
+ * server does not, so callers must send the canonical form ("europe/moscow"
+ * becomes "Europe/Moscow"). UTC offsets such as "+03:00" are accepted by Intl
+ * but not by the server, so they are rejected.
  */
-export function isValidTimeZone(name: string): boolean {
-  if (!name || /^[+-]/.test(name)) return false
+export function normalizeTimeZone(name: string): string | null {
+  if (!name || /^[+-]/.test(name)) return null
   try {
-    new Intl.DateTimeFormat(undefined, { timeZone: name })
-    return true
+    return new Intl.DateTimeFormat(undefined, { timeZone: name }).resolvedOptions().timeZone
   } catch {
-    return false
+    return null
   }
 }
 

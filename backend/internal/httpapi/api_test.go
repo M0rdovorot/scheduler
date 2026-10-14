@@ -249,3 +249,18 @@ func TestUsersAreIsolated(t *testing.T) {
 		t.Errorf("user B slot_minutes = %v, want the default 30", meB["slot_minutes"])
 	}
 }
+
+func TestRequestBodyErrors(t *testing.T) {
+	api := newTestAPI(t, true)
+
+	code, out := api.do("POST", "/auth/dev", "", `{not json`)
+	if code != http.StatusBadRequest || out["message"] != "invalid request body" {
+		t.Errorf("malformed JSON: status %d, body %v", code, out)
+	}
+
+	huge := `{"timezone":"UTC","display_name":"` + strings.Repeat("x", maxBodyBytes) + `"}`
+	code, out = api.do("POST", "/auth/dev", "", huge)
+	if code != http.StatusRequestEntityTooLarge || out["code"] != "body_too_large" {
+		t.Errorf("oversized body: status %d, body %v", code, out)
+	}
+}

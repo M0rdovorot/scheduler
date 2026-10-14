@@ -25,7 +25,7 @@ function setup(handler: (req: Request) => Response | Promise<Response>) {
       publicPaths: ['/auth/telegram', '/auth/dev', '/healthz'],
     }),
   )
-  return { client, calls, refreshToken }
+  return { client, calls, refreshToken, setToken: (t: string | null) => (token = t) }
 }
 
 const json = (status: number, body: unknown) =>
@@ -65,6 +65,22 @@ describe('auth middleware', () => {
     expect(refreshToken).toHaveBeenCalledTimes(1)
     expect(calls).toHaveLength(2)
     expect(await calls[1]?.text()).toBe(JSON.stringify({ slot_minutes: 15 }))
+  })
+
+  it('reuses a session that another request has already refreshed', async () => {
+    // While this request is in flight another one signs in and replaces the token.
+    const ctx: { setToken?: (t: string | null) => string | null } = {}
+    const { client, refreshToken, setToken } = setup((req) => {
+      if (req.headers.get('Authorization') === 'Bearer fresh') return json(200, user)
+      ctx.setToken?.('fresh')
+      return json(401, {})
+    })
+    ctx.setToken = setToken
+
+    const { response } = await client.GET('/me')
+
+    expect(response.status).toBe(200)
+    expect(refreshToken).not.toHaveBeenCalled()
   })
 
   it('retries only once', async () => {

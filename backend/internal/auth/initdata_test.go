@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"encoding/hex"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,4 +86,14 @@ func TestVerifyInitDataAgeBoundary(t *testing.T) {
 	if _, err := VerifyInitData(testInitData, testBotToken, maxAge, testAuthDate.Add(-30*time.Second)); err != nil {
 		t.Errorf("small clock skew should pass: %v", err)
 	}
+}
+
+// signInitData builds init data the way Telegram does, for tests that need
+// other users or dates than the fixed reference vector.
+func signInitData(userJSON string, authDate time.Time, botToken string) string {
+	v := url.Values{}
+	v.Set("user", userJSON)
+	v.Set("auth_date", strconv.FormatInt(authDate.Unix(), 10))
+	v.Set("hash", hex.EncodeToString(sign(dataCheckString(v), botToken)))
+	return v.Encode()
 }

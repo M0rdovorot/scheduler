@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -151,9 +152,15 @@ func TestLoginDev(t *testing.T) {
 		}
 
 		var verr *user.ValidationError
-		long := string(make([]byte, 65))
-		if _, err := svc.LoginDev(ctx, long, "", "UTC"); !errors.As(err, &verr) {
+		if _, err := svc.LoginDev(ctx, strings.Repeat("k", 65), "", "UTC"); !errors.As(err, &verr) {
 			t.Errorf("long key: err = %v, want ValidationError", err)
+		}
+		if _, err := svc.LoginDev(ctx, "", strings.Repeat("n", 101), "UTC"); !errors.As(err, &verr) {
+			t.Errorf("long name: err = %v, want ValidationError", err)
+		}
+		// The limits count characters, not bytes: 64 Cyrillic letters are fine.
+		if _, err := svc.LoginDev(ctx, strings.Repeat("ж", 64), "", "UTC"); err != nil {
+			t.Errorf("64-character key: %v", err)
 		}
 	})
 }
@@ -211,5 +218,73 @@ func TestLoginRemovesExpiredSessions(t *testing.T) {
 	}
 	if n := countRows(t, pool, "sessions"); n != 1 {
 		t.Errorf("sessions = %d, want only the new one", n)
+	}
+}
+
+func TestLoginTelegramRefreshesName(t *testing.T) {
+	svc, pool := newTestService(t, Config{BotToken: testBotToken})
+	ctx := context.Background()
+	at := testAuthDate
+
+	first, err := svc.LoginTelegram(ctx, signInitData(`{"id":7,"first_name":"Ivan"}`, at, testBotToken), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.User.DisplayName != "Ivan" {
+		t.Fatalf("name = %q", first.User.DisplayName)
+	}
+
+	second, err := svc.LoginTelegram(ctx, signInitData(`{"id":7,"first_name":"Ivan","last_name":"Petrov","username":"ivan"}`, at, testBotToken), "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.User.ID != first.User.ID || second.User.DisplayName != "Ivan Petrov" {
+		t.Errorf("second login user = %+v", second.User)
+	}
+
+	var stored, username string
+	err = pool.QueryRow(ctx, `SELECT u.display_name, i.username FROM users u JOIN user_identities i ON i.user_id = u.id`).Scan(&stored, &username)
+	if err != nil || stored != "Ivan Petrov" || username != "ivan" {
+		t.Errorf("stored name = %q, username = %q, err = %v", stored, username, err)
+	}
+}
+
+func TestAuthenticateTouchesSessionRarely(t *testing.T) {
+	svc, pool := newTestService(t, Config{DevAuth: true, SessionTTL: 24 * time.Hour})
+	ctx := context.Background()
+
+	sess, err := svc.LoginDev(ctx, "", "", "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loginTime := svc.now()
+	lastUsed := func() time.Time {
+		var ts time.Time
+		if err := pool.QueryRow(ctx, "SELECT last_used_at FROM sessions").Scan(&ts); err != nil {
+			t.Fatal(err)
+		}
+		return ts
+	}
+	// The row is stamped by the database clock; align it with the test clock.
+	if _, err := pool.Exec(ctx, "UPDATE sessions SET last_used_at = $1", loginTime); err != nil {
+		t.Fatal(err)
+	}
+	created := lastUsed()
+
+	svc.now = func() time.Time { return loginTime.Add(touchInterval - time.Second) }
+	if _, err := svc.Authenticate(ctx, sess.Token); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastUsed(); !got.Equal(created) {
+		t.Errorf("last_used_at changed within the touch interval: %v -> %v", created, got)
+	}
+
+	later := loginTime.Add(touchInterval + 24*time.Minute)
+	svc.now = func() time.Time { return later }
+	if _, err := svc.Authenticate(ctx, sess.Token); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastUsed(); !got.Equal(later) {
+		t.Errorf("last_used_at = %v, want %v after the touch interval", got, later)
 	}
 }

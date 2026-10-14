@@ -27,3 +27,6 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 UPDATE user_identities
 SET username = $2, first_name = $3, last_name = $4, photo_url = $5, language_code = $6
 WHERE id = $1;
+
+-- name: UpdateUserDisplayName :exec
+UPDATE users SET display_name = $2 WHERE id = $1 AND display_name <> $2;

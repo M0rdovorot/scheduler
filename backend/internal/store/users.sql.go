@@ -141,6 +141,20 @@ func (q *Queries) UpdateIdentityProfile(ctx context.Context, arg UpdateIdentityP
 	return err
 }
 
+const updateUserDisplayName = `-- name: UpdateUserDisplayName :exec
+UPDATE users SET display_name = $2 WHERE id = $1 AND display_name <> $2
+`
+
+type UpdateUserDisplayNameParams struct {
+	ID          uuid.UUID
+	DisplayName string
+}
+
+func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) error {
+	_, err := q.db.Exec(ctx, updateUserDisplayName, arg.ID, arg.DisplayName)
+	return err
+}
+
 const updateUserSettings = `-- name: UpdateUserSettings :one
 UPDATE users
 SET timezone                    = COALESCE($1, timezone),
