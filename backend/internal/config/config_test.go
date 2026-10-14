@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func env(m map[string]string) func(string) string {
@@ -11,9 +12,15 @@ func env(m map[string]string) func(string) string {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	cfg, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x"}))
+	cfg, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "BOT_TOKEN": "tok"}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cfg.DevAuth || cfg.BotToken != "tok" {
+		t.Errorf("DevAuth = %v, BotToken = %q", cfg.DevAuth, cfg.BotToken)
+	}
+	if cfg.SessionTTL != 30*24*time.Hour || cfg.InitDataMaxAge != 24*time.Hour {
+		t.Errorf("SessionTTL = %v, InitDataMaxAge = %v", cfg.SessionTTL, cfg.InitDataMaxAge)
 	}
 	if cfg.AppEnv != EnvProd || cfg.IsDev() {
 		t.Errorf("AppEnv = %q, want prod by default", cfg.AppEnv)
@@ -32,9 +39,14 @@ func TestLoadValues(t *testing.T) {
 		"HTTP_ADDR":    ":9000",
 		"DATABASE_URL": "postgres://x",
 		"LOG_LEVEL":    "debug",
+		"DEV_AUTH":     "true",
+		"SESSION_TTL":  "48h",
 	}))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !cfg.DevAuth || cfg.SessionTTL != 48*time.Hour {
+		t.Errorf("DevAuth = %v, SessionTTL = %v", cfg.DevAuth, cfg.SessionTTL)
 	}
 	if !cfg.IsDev() || cfg.HTTPAddr != ":9000" || cfg.LogLevel != slog.LevelDebug {
 		t.Errorf("unexpected config: %+v", cfg)
@@ -46,9 +58,39 @@ func TestLoadErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"APP_ENV", "DATABASE_URL", "LOG_LEVEL"} {
+	for _, want := range []string{"APP_ENV", "DATABASE_URL", "LOG_LEVEL", "BOT_TOKEN"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %s", err, want)
 		}
+	}
+}
+
+func TestLoadDevAuthRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantErr string // empty: must succeed
+	}{
+		{"dev auth in prod", map[string]string{"APP_ENV": "prod", "DEV_AUTH": "true", "DATABASE_URL": "x"}, "DEV_AUTH can be enabled only with APP_ENV=dev"},
+		{"dev auth in dev without token", map[string]string{"APP_ENV": "dev", "DEV_AUTH": "true", "DATABASE_URL": "x"}, ""},
+		{"prod without token", map[string]string{"APP_ENV": "prod", "DATABASE_URL": "x"}, "BOT_TOKEN is required"},
+		{"dev without token and dev auth", map[string]string{"APP_ENV": "dev", "DATABASE_URL": "x"}, "BOT_TOKEN is required"},
+		{"bad bool", map[string]string{"APP_ENV": "dev", "DEV_AUTH": "maybe", "DATABASE_URL": "x"}, "DEV_AUTH"},
+		{"bad duration", map[string]string{"APP_ENV": "dev", "DEV_AUTH": "1", "DATABASE_URL": "x", "SESSION_TTL": "soon"}, "SESSION_TTL"},
+		{"non-positive duration", map[string]string{"BOT_TOKEN": "t", "DATABASE_URL": "x", "INITDATA_MAX_AGE": "0s"}, "INITDATA_MAX_AGE"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Load(env(tt.env))
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }

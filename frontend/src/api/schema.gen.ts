@@ -21,6 +21,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with Telegram Mini App init data
+         * @description Verifies the signature and freshness of `init_data`. The account is
+         *     created on the first sign-in; `timezone` is used only then.
+         */
+        post: operations["loginTelegram"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/dev": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in without Telegram (development only)
+         * @description Available only when the server runs with `APP_ENV=dev` and
+         *     `DEV_AUTH=true`; otherwise responds 404. Each `key` is a separate user.
+         */
+        post: operations["loginDev"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current user with settings */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change settings; omitted fields stay as they are */
+        patch: operations["updateMySettings"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -29,8 +105,98 @@ export interface components {
             /** @enum {string} */
             status: "ok" | "unavailable";
         };
+        Error: {
+            /**
+             * @description Machine-readable error code
+             * @example validation_failed
+             */
+            code: string;
+            message: string;
+            /** @description Name of the invalid request field, if any */
+            field?: string;
+        };
+        TelegramLoginRequest: {
+            /** @description Raw `Telegram.WebApp.initData` */
+            init_data: string;
+            /**
+             * @description IANA time zone of the device
+             * @example Europe/Moscow
+             */
+            timezone: string;
+        };
+        DevLoginRequest: {
+            /** @description Identifies the dev user; defaults to `dev` */
+            key?: string;
+            display_name?: string;
+            /** @example Europe/Moscow */
+            timezone: string;
+        };
+        Session: {
+            /** @description Bearer token; send it as `Authorization: Bearer <token>` */
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+            user: components["schemas"]["User"];
+        };
+        /** @enum {string} */
+        ViewMode: "day" | "three_days" | "week";
+        /** @enum {integer} */
+        SlotMinutes: 5 | 10 | 15 | 30 | 60;
+        User: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** @description IANA time zone */
+            timezone: string;
+            slot_minutes: components["schemas"]["SlotMinutes"];
+            default_view: components["schemas"]["ViewMode"];
+            deviation_threshold_minutes: number;
+        };
+        SettingsPatch: {
+            timezone?: string;
+            slot_minutes?: components["schemas"]["SlotMinutes"];
+            default_view?: components["schemas"]["ViewMode"];
+            deviation_threshold_minutes?: number;
+        };
     };
-    responses: never;
+    responses: {
+        /** @description Session token and the signed-in user */
+        SessionIssued: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Session"];
+            };
+        };
+        /** @description Invalid request */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Missing, invalid or expired credentials */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Not found */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
     parameters: never;
     requestBodies: never;
     headers: never;
@@ -65,6 +231,89 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    loginTelegram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramLoginRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SessionIssued"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    loginDev: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevLoginRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SessionIssued"];
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateMySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
         };
     };
 }

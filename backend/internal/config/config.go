@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -19,6 +21,15 @@ type Config struct {
 	LogLevel    slog.Level
 	HTTPAddr    string
 	DatabaseURL string
+
+	// BotToken signs and verifies Telegram init data. Required unless DevAuth is on.
+	BotToken string
+	// DevAuth enables sign-in without Telegram. Allowed only when AppEnv is dev.
+	DevAuth bool
+	// SessionTTL is how long an issued session token stays valid.
+	SessionTTL time.Duration
+	// InitDataMaxAge is how old Telegram init data may be.
+	InitDataMaxAge time.Duration
 }
 
 // Load reads the configuration using getenv (usually os.Getenv).
@@ -27,15 +38,33 @@ func Load(getenv func(string) string) (Config, error) {
 		AppEnv:      withDefault(getenv("APP_ENV"), EnvProd),
 		HTTPAddr:    withDefault(getenv("HTTP_ADDR"), "127.0.0.1:8081"),
 		DatabaseURL: getenv("DATABASE_URL"),
+		BotToken:    strings.TrimSpace(getenv("BOT_TOKEN")),
 	}
 
 	var errs []error
+
+	var err error
+	if cfg.DevAuth, err = parseBool(getenv("DEV_AUTH")); err != nil {
+		errs = append(errs, fmt.Errorf("DEV_AUTH: %w", err))
+	}
+	if cfg.SessionTTL, err = parseDuration(getenv("SESSION_TTL"), 30*24*time.Hour); err != nil {
+		errs = append(errs, fmt.Errorf("SESSION_TTL: %w", err))
+	}
+	if cfg.InitDataMaxAge, err = parseDuration(getenv("INITDATA_MAX_AGE"), 24*time.Hour); err != nil {
+		errs = append(errs, fmt.Errorf("INITDATA_MAX_AGE: %w", err))
+	}
 
 	if cfg.AppEnv != EnvDev && cfg.AppEnv != EnvProd {
 		errs = append(errs, fmt.Errorf("APP_ENV must be %q or %q, got %q", EnvDev, EnvProd, cfg.AppEnv))
 	}
 	if cfg.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL is required"))
+	}
+	if cfg.DevAuth && cfg.AppEnv != EnvDev {
+		errs = append(errs, errors.New("DEV_AUTH can be enabled only with APP_ENV=dev"))
+	}
+	if cfg.BotToken == "" && !cfg.DevAuth {
+		errs = append(errs, errors.New("BOT_TOKEN is required unless DEV_AUTH is enabled"))
 	}
 	if err := cfg.LogLevel.UnmarshalText([]byte(withDefault(getenv("LOG_LEVEL"), "info"))); err != nil {
 		errs = append(errs, fmt.Errorf("LOG_LEVEL: %w", err))
@@ -53,6 +82,27 @@ func LoadFromEnv() (Config, error) {
 }
 
 func (c Config) IsDev() bool { return c.AppEnv == EnvDev }
+
+func parseBool(v string) (bool, error) {
+	if strings.TrimSpace(v) == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(strings.TrimSpace(v))
+}
+
+func parseDuration(v string, def time.Duration) (time.Duration, error) {
+	if strings.TrimSpace(v) == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(v))
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, errors.New("must be positive")
+	}
+	return d, nil
+}
 
 func withDefault(v, def string) string {
 	if v = strings.TrimSpace(v); v != "" {

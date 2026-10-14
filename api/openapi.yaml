@@ -5,12 +5,19 @@ info:
   description: Task planner API. Source of truth for the Go server and the TS client.
 servers:
   - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: system
+  - name: auth
+  - name: me
 paths:
   /healthz:
     get:
       operationId: getHealth
       summary: Liveness and database readiness probe
       tags: [system]
+      security: []
       responses:
         "200":
           description: Service is up and the database is reachable
@@ -24,7 +31,117 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /auth/telegram:
+    post:
+      operationId: loginTelegram
+      summary: Sign in with Telegram Mini App init data
+      description: |
+        Verifies the signature and freshness of `init_data`. The account is
+        created on the first sign-in; `timezone` is used only then.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramLoginRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/SessionIssued"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/dev:
+    post:
+      operationId: loginDev
+      summary: Sign in without Telegram (development only)
+      description: |
+        Available only when the server runs with `APP_ENV=dev` and
+        `DEV_AUTH=true`; otherwise responds 404. Each `key` is a separate user.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DevLoginRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/SessionIssued"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /me:
+    get:
+      operationId: getMe
+      summary: Current user with settings
+      tags: [me]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /me/settings:
+    patch:
+      operationId: updateMySettings
+      summary: Change settings; omitted fields stay as they are
+      tags: [me]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsPatch"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Session token from `/auth/telegram`.
+  responses:
+    SessionIssued:
+      description: Session token and the signed-in user
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Session"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing, invalid or expired credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     Health:
       type: object
@@ -33,3 +150,92 @@ components:
         status:
           type: string
           enum: [ok, unavailable]
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: validation_failed
+        message:
+          type: string
+        field:
+          type: string
+          description: Name of the invalid request field, if any
+    TelegramLoginRequest:
+      type: object
+      required: [init_data, timezone]
+      properties:
+        init_data:
+          type: string
+          description: Raw `Telegram.WebApp.initData`
+        timezone:
+          type: string
+          description: IANA time zone of the device
+          example: Europe/Moscow
+    DevLoginRequest:
+      type: object
+      required: [timezone]
+      properties:
+        key:
+          type: string
+          maxLength: 64
+          description: Identifies the dev user; defaults to `dev`
+        display_name:
+          type: string
+        timezone:
+          type: string
+          example: Europe/Moscow
+    Session:
+      type: object
+      required: [token, expires_at, user]
+      properties:
+        token:
+          type: string
+          description: "Bearer token; send it as `Authorization: Bearer <token>`"
+        expires_at:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/User"
+    ViewMode:
+      type: string
+      enum: [day, three_days, week]
+    SlotMinutes:
+      type: integer
+      enum: [5, 10, 15, 30, 60]
+      x-enum-varnames: [Slot5, Slot10, Slot15, Slot30, Slot60]
+    User:
+      type: object
+      required: [id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes]
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        timezone:
+          type: string
+          description: IANA time zone
+        slot_minutes:
+          $ref: "#/components/schemas/SlotMinutes"
+        default_view:
+          $ref: "#/components/schemas/ViewMode"
+        deviation_threshold_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
+    SettingsPatch:
+      type: object
+      properties:
+        timezone:
+          type: string
+        slot_minutes:
+          $ref: "#/components/schemas/SlotMinutes"
+        default_view:
+          $ref: "#/components/schemas/ViewMode"
+        deviation_threshold_minutes:
+          type: integer
+          minimum: 0
+          maximum: 1440

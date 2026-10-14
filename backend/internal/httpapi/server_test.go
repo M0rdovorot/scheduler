@@ -27,7 +27,7 @@ func TestHealthz(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewRouter(NewServer(fakePinger{tt.pingErr}), slog.New(slog.NewTextHandler(io.Discard, nil)))
+			h := NewRouter(NewServer(Deps{DB: fakePinger{tt.pingErr}}), slog.New(slog.NewTextHandler(io.Discard, nil)))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/healthz", nil))
 

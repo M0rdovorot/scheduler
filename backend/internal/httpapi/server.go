@@ -3,30 +3,46 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/m0rdovorot/scheduler/backend/internal/auth"
+	"github.com/m0rdovorot/scheduler/backend/internal/user"
 )
 
-const basePath = "/api/v1"
+const (
+	basePath = "/api/v1"
+
+	maxBodyBytes = 1 << 20
+)
 
 // Pinger reports whether the database is reachable.
 type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Deps are the services the API needs.
+type Deps struct {
+	DB    Pinger
+	Auth  *auth.Service
+	Users *user.Service
+}
+
 // Server implements StrictServerInterface.
 type Server struct {
-	db Pinger
+	Deps
 }
 
 var _ StrictServerInterface = (*Server)(nil)
 
-func NewServer(db Pinger) *Server {
-	return &Server{db: db}
+func NewServer(deps Deps) *Server {
+	return &Server{Deps: deps}
 }
 
 // NewRouter builds the HTTP handler for the whole API.
@@ -35,14 +51,16 @@ func NewRouter(srv *Server, log *slog.Logger) http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(requestLogger(log))
 	r.Use(middleware.Recoverer)
+	r.Use(limitBody)
+	r.Use(requireAuth(srv.Auth, log))
 
 	strict := NewStrictHandlerWithOptions(srv, nil, StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.ErrorContext(r.Context(), "handler error", "err", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "internal", "internal server error")
 		},
 	})
 	return HandlerFromMuxWithBaseURL(strict, r, basePath)
@@ -51,10 +69,118 @@ func NewRouter(srv *Server, log *slog.Logger) http.Handler {
 func (s *Server) GetHealth(ctx context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if err := s.db.Ping(ctx); err != nil {
+	if err := s.DB.Ping(ctx); err != nil {
 		return GetHealth503JSONResponse{Status: Unavailable}, nil
 	}
 	return GetHealth200JSONResponse{Status: Ok}, nil
+}
+
+func (s *Server) LoginTelegram(ctx context.Context, req LoginTelegramRequestObject) (LoginTelegramResponseObject, error) {
+	sess, err := s.Auth.LoginTelegram(ctx, req.Body.InitData, req.Body.Timezone)
+	var verr *user.ValidationError
+	switch {
+	case errors.As(err, &verr):
+		return LoginTelegram400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, auth.ErrInvalidInitData):
+		return LoginTelegram401JSONResponse{UnauthorizedJSONResponse{
+			Code: "invalid_init_data", Message: "invalid or expired Telegram init data",
+		}}, nil
+	case err != nil:
+		return nil, err
+	}
+	return LoginTelegram200JSONResponse{SessionIssuedJSONResponse(toSession(sess))}, nil
+}
+
+func (s *Server) LoginDev(ctx context.Context, req LoginDevRequestObject) (LoginDevResponseObject, error) {
+	var name string
+	if req.Body.DisplayName != nil {
+		name = *req.Body.DisplayName
+	}
+	var key string
+	if req.Body.Key != nil {
+		key = *req.Body.Key
+	}
+	sess, err := s.Auth.LoginDev(ctx, key, name, req.Body.Timezone)
+	var verr *user.ValidationError
+	switch {
+	case errors.Is(err, auth.ErrDevAuthDisabled):
+		return LoginDev404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "not found"}}, nil
+	case errors.As(err, &verr):
+		return LoginDev400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case err != nil:
+		return nil, err
+	}
+	return LoginDev200JSONResponse{SessionIssuedJSONResponse(toSession(sess))}, nil
+}
+
+func (s *Server) GetMe(ctx context.Context, _ GetMeRequestObject) (GetMeResponseObject, error) {
+	u, err := s.Users.Get(ctx, userID(ctx))
+	if errors.Is(err, user.ErrNotFound) {
+		return GetMe401JSONResponse{UnauthorizedJSONResponse{Code: "unauthorized", Message: "unauthorized"}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return GetMe200JSONResponse(toUser(u)), nil
+}
+
+func (s *Server) UpdateMySettings(ctx context.Context, req UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error) {
+	patch := user.SettingsPatch{
+		Timezone:                  req.Body.Timezone,
+		DeviationThresholdMinutes: req.Body.DeviationThresholdMinutes,
+	}
+	if v := req.Body.SlotMinutes; v != nil {
+		n := int(*v)
+		patch.SlotMinutes = &n
+	}
+	if v := req.Body.DefaultView; v != nil {
+		str := string(*v)
+		patch.DefaultView = &str
+	}
+
+	u, err := s.Users.UpdateSettings(ctx, userID(ctx), patch)
+	var verr *user.ValidationError
+	switch {
+	case errors.As(err, &verr):
+		return UpdateMySettings400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, user.ErrNotFound):
+		return UpdateMySettings401JSONResponse{UnauthorizedJSONResponse{Code: "unauthorized", Message: "unauthorized"}}, nil
+	case err != nil:
+		return nil, err
+	}
+	return UpdateMySettings200JSONResponse(toUser(u)), nil
+}
+
+func toUser(u user.User) User {
+	return User{
+		Id:                        u.ID,
+		DisplayName:               u.DisplayName,
+		Timezone:                  u.Timezone,
+		SlotMinutes:               SlotMinutes(u.SlotMinutes),
+		DefaultView:               ViewMode(u.DefaultView),
+		DeviationThresholdMinutes: u.DeviationThresholdMinutes,
+	}
+}
+
+func toSession(s auth.Session) Session {
+	return Session{Token: s.Token, ExpiresAt: s.ExpiresAt, User: toUser(s.User)}
+}
+
+func validationError(e *user.ValidationError) Error {
+	return Error{Code: "validation_failed", Message: e.Error(), Field: &e.Field}
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(Error{Code: code, Message: message})
+}
+
+func limitBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {

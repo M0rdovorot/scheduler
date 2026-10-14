@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for HealthStatus.
@@ -31,6 +33,77 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for SlotMinutes.
+const (
+	Slot10 SlotMinutes = 10
+	Slot15 SlotMinutes = 15
+	Slot30 SlotMinutes = 30
+	Slot5  SlotMinutes = 5
+	Slot60 SlotMinutes = 60
+)
+
+// Valid indicates whether the value is a known member of the SlotMinutes enum.
+func (e SlotMinutes) Valid() bool {
+	switch e {
+	case Slot10:
+		return true
+	case Slot15:
+		return true
+	case Slot30:
+		return true
+	case Slot5:
+		return true
+	case Slot60:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ViewMode.
+const (
+	Day       ViewMode = "day"
+	ThreeDays ViewMode = "three_days"
+	Week      ViewMode = "week"
+)
+
+// Valid indicates whether the value is a known member of the ViewMode enum.
+func (e ViewMode) Valid() bool {
+	switch e {
+	case Day:
+		return true
+	case ThreeDays:
+		return true
+	case Week:
+		return true
+	default:
+		return false
+	}
+}
+
+// DevLoginRequest defines model for DevLoginRequest.
+type DevLoginRequest struct {
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Key Identifies the dev user; defaults to `dev`
+	Key *string `json:"key,omitempty"`
+
+	// Timezone Example: Europe/Moscow
+	Timezone string `json:"timezone"`
+}
+
+// Error defines model for Error.
+type Error struct {
+	// Code Machine-readable error code
+	//
+	// Example: validation_failed
+	Code string `json:"code"`
+
+	// Field Name of the invalid request field, if any
+	Field   *string `json:"field,omitempty"`
+	Message string  `json:"message"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -39,20 +112,123 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Session defines model for Session.
+type Session struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Token Bearer token; send it as `Authorization: Bearer <token>`
+	Token string `json:"token"`
+	User  User   `json:"user"`
+}
+
+// SettingsPatch defines model for SettingsPatch.
+type SettingsPatch struct {
+	DefaultView               *ViewMode    `json:"default_view,omitempty"`
+	DeviationThresholdMinutes *int         `json:"deviation_threshold_minutes,omitempty"`
+	SlotMinutes               *SlotMinutes `json:"slot_minutes,omitempty"`
+	Timezone                  *string      `json:"timezone,omitempty"`
+}
+
+// SlotMinutes defines model for SlotMinutes.
+type SlotMinutes int
+
+// TelegramLoginRequest defines model for TelegramLoginRequest.
+type TelegramLoginRequest struct {
+	// InitData Raw `Telegram.WebApp.initData`
+	InitData string `json:"init_data"`
+
+	// Timezone IANA time zone of the device
+	//
+	// Example: Europe/Moscow
+	Timezone string `json:"timezone"`
+}
+
+// User defines model for User.
+type User struct {
+	DefaultView               ViewMode           `json:"default_view"`
+	DeviationThresholdMinutes int                `json:"deviation_threshold_minutes"`
+	DisplayName               string             `json:"display_name"`
+	Id                        openapi_types.UUID `json:"id"`
+	SlotMinutes               SlotMinutes        `json:"slot_minutes"`
+
+	// Timezone IANA time zone
+	Timezone string `json:"timezone"`
+}
+
+// ViewMode defines model for ViewMode.
+type ViewMode string
+
+// BadRequest defines model for BadRequest.
+type BadRequest = Error
+
+// NotFound defines model for NotFound.
+type NotFound = Error
+
+// SessionIssued defines model for SessionIssued.
+type SessionIssued = Session
+
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Error
+
+// LoginDevJSONRequestBody defines body for LoginDev for application/json ContentType.
+type LoginDevJSONRequestBody = DevLoginRequest
+
+// LoginTelegramJSONRequestBody defines body for LoginTelegram for application/json ContentType.
+type LoginTelegramJSONRequestBody = TelegramLoginRequest
+
+// UpdateMySettingsJSONRequestBody defines body for UpdateMySettings for application/json ContentType.
+type UpdateMySettingsJSONRequestBody = SettingsPatch
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// LoginDev Sign in without Telegram (development only)
+	// (POST /auth/dev)
+	LoginDev(w http.ResponseWriter, r *http.Request)
+	// LoginTelegram Sign in with Telegram Mini App init data
+	// (POST /auth/telegram)
+	LoginTelegram(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetMe Current user with settings
+	// (GET /me)
+	GetMe(w http.ResponseWriter, r *http.Request)
+	// UpdateMySettings Change settings; omitted fields stay as they are
+	// (PATCH /me/settings)
+	UpdateMySettings(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
+// LoginDev Sign in without Telegram (development only)
+// (POST /auth/dev)
+func (_ Unimplemented) LoginDev(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LoginTelegram Sign in with Telegram Mini App init data
+// (POST /auth/telegram)
+func (_ Unimplemented) LoginTelegram(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetHealth Liveness and database readiness probe
 // (GET /healthz)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetMe Current user with settings
+// (GET /me)
+func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateMySettings Change settings; omitted fields stay as they are
+// (PATCH /me/settings)
+func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -65,11 +241,67 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// LoginDev operation middleware
+func (siw *ServerInterfaceWrapper) LoginDev(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginDev(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginTelegram operation middleware
+func (siw *ServerInterfaceWrapper) LoginTelegram(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginTelegram(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMySettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMySettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -195,8 +427,128 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/healthz", wrapper.GetHealth)
 	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/telegram", wrapper.LoginTelegram)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/dev", wrapper.LoginDev)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me", wrapper.GetMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/me/settings", wrapper.UpdateMySettings)
+	})
 
 	return r
+}
+
+type BadRequestJSONResponse Error
+
+type NotFoundJSONResponse Error
+
+type SessionIssuedJSONResponse Session
+
+type UnauthorizedJSONResponse Error
+
+type LoginDevRequestObject struct {
+	Body *LoginDevJSONRequestBody
+}
+
+type LoginDevResponseObject interface {
+	VisitLoginDevResponse(w http.ResponseWriter) error
+}
+
+type LoginDev200JSONResponse struct{ SessionIssuedJSONResponse }
+
+func (response LoginDev200JSONResponse) VisitLoginDevResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginDev400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginDev400JSONResponse) VisitLoginDevResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginDev404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response LoginDev404JSONResponse) VisitLoginDevResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginTelegramRequestObject struct {
+	Body *LoginTelegramJSONRequestBody
+}
+
+type LoginTelegramResponseObject interface {
+	VisitLoginTelegramResponse(w http.ResponseWriter) error
+}
+
+type LoginTelegram200JSONResponse struct{ SessionIssuedJSONResponse }
+
+func (response LoginTelegram200JSONResponse) VisitLoginTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginTelegram400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginTelegram400JSONResponse) VisitLoginTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginTelegram401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response LoginTelegram401JSONResponse) VisitLoginTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthRequestObject struct {
@@ -234,11 +586,108 @@ func (response GetHealth503JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse User
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMe401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetMe401JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMySettingsRequestObject struct {
+	Body *UpdateMySettingsJSONRequestBody
+}
+
+type UpdateMySettingsResponseObject interface {
+	VisitUpdateMySettingsResponse(w http.ResponseWriter) error
+}
+
+type UpdateMySettings200JSONResponse User
+
+func (response UpdateMySettings200JSONResponse) VisitUpdateMySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMySettings400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateMySettings400JSONResponse) VisitUpdateMySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMySettings401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateMySettings401JSONResponse) VisitUpdateMySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// LoginDev Sign in without Telegram (development only)
+	// (POST /auth/dev)
+	LoginDev(ctx context.Context, request LoginDevRequestObject) (LoginDevResponseObject, error)
+	// LoginTelegram Sign in with Telegram Mini App init data
+	// (POST /auth/telegram)
+	LoginTelegram(ctx context.Context, request LoginTelegramRequestObject) (LoginTelegramResponseObject, error)
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// GetMe Current user with settings
+	// (GET /me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// UpdateMySettings Change settings; omitted fields stay as they are
+	// (PATCH /me/settings)
+	UpdateMySettings(ctx context.Context, request UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -280,6 +729,68 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// LoginDev operation middleware
+func (sh *strictHandler) LoginDev(w http.ResponseWriter, r *http.Request) {
+	var request LoginDevRequestObject
+
+	var body LoginDevJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginDev(ctx, request.(LoginDevRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginDev")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginDevResponseObject); ok {
+		if err := validResponse.VisitLoginDevResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginTelegram operation middleware
+func (sh *strictHandler) LoginTelegram(w http.ResponseWriter, r *http.Request) {
+	var request LoginTelegramRequestObject
+
+	var body LoginTelegramJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginTelegram(ctx, request.(LoginTelegramRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginTelegram")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginTelegramResponseObject); ok {
+		if err := validResponse.VisitLoginTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -297,6 +808,61 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMySettings operation middleware
+func (sh *strictHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	var request UpdateMySettingsRequestObject
+
+	var body UpdateMySettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMySettings(ctx, request.(UpdateMySettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMySettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMySettingsResponseObject); ok {
+		if err := validResponse.VisitUpdateMySettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

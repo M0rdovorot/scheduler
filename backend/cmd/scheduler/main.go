@@ -11,10 +11,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // IANA zones must not depend on the host's tzdata
 
+	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
+	"github.com/m0rdovorot/scheduler/backend/internal/user"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
 )
 
@@ -49,15 +52,27 @@ func run() error {
 	}
 	log.Info("migrations applied", "count", applied)
 
+	st := store.NewStore(pool)
+	api := httpapi.NewServer(httpapi.Deps{
+		DB: st,
+		Auth: auth.NewService(st, auth.Config{
+			BotToken:       cfg.BotToken,
+			DevAuth:        cfg.DevAuth,
+			SessionTTL:     cfg.SessionTTL,
+			InitDataMaxAge: cfg.InitDataMaxAge,
+		}),
+		Users: user.NewService(st),
+	})
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(httpapi.NewServer(pool), log),
+		Handler:           httpapi.NewRouter(api, log),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("http server listening", "addr", cfg.HTTPAddr, "env", cfg.AppEnv)
+		log.Info("http server listening", "addr", cfg.HTTPAddr, "env", cfg.AppEnv, "dev_auth", cfg.DevAuth)
 		errCh <- srv.ListenAndServe()
 	}()
 

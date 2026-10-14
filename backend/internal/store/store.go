@@ -14,6 +14,39 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+// Store bundles the pool with the generated queries.
+type Store struct {
+	*Queries
+	pool *pgxpool.Pool
+}
+
+func NewStore(pool *pgxpool.Pool) *Store {
+	return &Store{Queries: New(pool), pool: pool}
+}
+
+// Ping reports whether the database is reachable.
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
+
+// InTx runs fn inside a transaction: it commits when fn returns nil and rolls
+// back otherwise.
+func (s *Store) InTx(ctx context.Context, fn func(q *Queries) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := fn(s.Queries.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
+}
+
 // Open creates a connection pool and verifies the database is reachable.
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, url)

@@ -63,7 +63,7 @@ dev-db-down:
 	docker compose -f docker-compose.dev.yml down
 
 dev:
-	cd backend && APP_ENV=dev DATABASE_URL='$(DEV_DB_URL)' go run ./cmd/scheduler
+	cd backend && APP_ENV=dev DEV_AUTH=true DATABASE_URL='$(DEV_DB_URL)' go run ./cmd/scheduler
 
 dev-web:
 	cd frontend && npm run dev
