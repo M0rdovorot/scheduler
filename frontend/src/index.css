@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+
+/* Defaults for the browser; the platform adapter overrides them from the Telegram theme. */
+:root {
+  --app-bg: #ffffff;
+  --app-fg: #111111;
+  --app-hint: #6b7280;
+  --app-link: #2563eb;
+  --app-accent: #2563eb;
+  --app-accent-fg: #ffffff;
+  --app-surface: #f3f4f6;
+  --app-separator: #e5e7eb;
+  --app-danger: #dc2626;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --app-bg: #17181a;
+  --app-fg: #f3f4f6;
+  --app-hint: #9ca3af;
+  --app-link: #60a5fa;
+  --app-accent: #3b82f6;
+  --app-accent-fg: #ffffff;
+  --app-surface: #232428;
+  --app-separator: #34363b;
+  --app-danger: #f87171;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--app-bg);
+  --color-fg: var(--app-fg);
+  --color-hint: var(--app-hint);
+  --color-link: var(--app-link);
+  --color-accent: var(--app-accent);
+  --color-accent-fg: var(--app-accent-fg);
+  --color-surface: var(--app-surface);
+  --color-separator: var(--app-separator);
+  --color-danger: var(--app-danger);
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100dvh;
+  /* Telegram exposes its safe areas as CSS variables; fall back to the browser's. */
+  padding-top: calc(
+    var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+      var(--tg-content-safe-area-inset-top, 0px)
+  );
+  padding-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
