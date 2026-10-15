@@ -7,6 +7,8 @@ export interface StubRequest {
   /** Path without the /api/v1 prefix, e.g. "/categories/abc". */
   path: string
   body: unknown
+  /** Query string parameters. */
+  query: URLSearchParams
   auth: string | null
 }
 
@@ -23,6 +25,7 @@ vi.stubGlobal('fetch', async (input: Request) => {
     method: input.method,
     path: new URL(input.url).pathname.replace(/^\/api\/v1/, ''),
     body: text ? (JSON.parse(text) as unknown) : undefined,
+    query: new URL(input.url).searchParams,
     auth: input.headers.get('Authorization'),
   }
   net.calls.push(call)

@@ -53,12 +53,22 @@ body {
   overscroll-behavior: none;
 }
 
-#root {
-  min-height: 100dvh;
+:root {
   /* Telegram exposes its safe areas as CSS variables; fall back to the browser's. */
-  padding-top: calc(
+  --safe-top: calc(
     var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
       var(--tg-content-safe-area-inset-top, 0px)
   );
-  padding-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-bottom: var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+#root {
+  min-height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* A full-screen page that scrolls inside (the calendar grid). */
+@utility h-screen-safe {
+  height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }

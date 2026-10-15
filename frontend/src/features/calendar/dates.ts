@@ -1,0 +1,105 @@
+import { TZDate } from '@date-fns/tz'
+import type { ViewMode } from '@/api/types'
+
+/** A calendar date in the user's time zone, "yyyy-MM-dd". */
+export type Day = string
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+function parseDay(day: Day): { y: number; m: number; d: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (!match) throw new Error(`Invalid day: ${day}`)
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) }
+}
+
+export function formatDay(y: number, m: number, d: number): Day {
+  return `${y}-${pad(m)}-${pad(d)}`
+}
+
+/** Today's date in the time zone. */
+export function todayIn(tz: string, now: Date = new Date()): Day {
+  const t = new TZDate(now.getTime(), tz)
+  return formatDay(t.getFullYear(), t.getMonth() + 1, t.getDate())
+}
+
+/** The date `n` days after `day` (negative: before). Pure calendar arithmetic. */
+export function addDays(day: Day, n: number): Day {
+  const { y, m, d } = parseDay(day)
+  const t = new Date(Date.UTC(y, m - 1, d + n))
+  return formatDay(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate())
+}
+
+/** Day of the week: 0 = Monday … 6 = Sunday. */
+export function weekdayIndex(day: Day): number {
+  const { y, m, d } = parseDay(day)
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7
+}
+
+/** The Monday of the week that contains `day`. */
+export function weekStart(day: Day): Day {
+  return addDays(day, -weekdayIndex(day))
+}
+
+/** The instant of the local midnight that starts `day` in the time zone. */
+export function dayStart(day: Day, tz: string): Date {
+  const { y, m, d } = parseDay(day)
+  return new Date(new TZDate(y, m - 1, d, tz).getTime())
+}
+
+/** Days shown for the view around the anchor date. */
+export function visibleDays(view: ViewMode, anchor: Day): Day[] {
+  switch (view) {
+    case 'day':
+      return [anchor]
+    case 'three_days':
+      return [addDays(anchor, -1), anchor, addDays(anchor, 1)]
+    case 'week': {
+      const monday = weekStart(anchor)
+      return Array.from({ length: 7 }, (_, i) => addDays(monday, i))
+    }
+  }
+}
+
+/** Anchor date after pressing "previous" (-1) or "next" (+1). */
+export function shiftAnchor(view: ViewMode, anchor: Day, direction: -1 | 1): Day {
+  const step = view === 'day' ? 1 : view === 'three_days' ? 3 : 7
+  return addDays(anchor, direction * step)
+}
+
+/** [from, to) covering all the days, as instants. */
+export function dayRange(days: readonly Day[], tz: string): { from: Date; to: Date } {
+  const first = days[0]
+  const last = days[days.length - 1]
+  if (!first || !last) throw new Error('dayRange needs at least one day')
+  return { from: dayStart(first, tz), to: dayStart(addDays(last, 1), tz) }
+}
+
+const ruWeekday = new Intl.DateTimeFormat('ru', { weekday: 'short', timeZone: 'UTC' })
+const ruDayMonth = new Intl.DateTimeFormat('ru', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+})
+const ruFull = new Intl.DateTimeFormat('ru', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+})
+
+function utcDate(day: Day): Date {
+  const { y, m, d } = parseDay(day)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+export const weekdayLabel = (day: Day) => ruWeekday.format(utcDate(day))
+export const dayMonthLabel = (day: Day) => ruDayMonth.format(utcDate(day))
+export const fullDayLabel = (day: Day) => ruFull.format(utcDate(day))
+
+/** Title for the visible range, e.g. "14 окт" or "13 окт – 19 окт". */
+export function rangeLabel(days: readonly Day[]): string {
+  const first = days[0]
+  const last = days[days.length - 1]
+  if (!first || !last) return ''
+  return first === last ? dayMonthLabel(first) : `${dayMonthLabel(first)} – ${dayMonthLabel(last)}`
+}

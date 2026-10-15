@@ -21,6 +21,9 @@ function apiServer(req: StubRequest): Response {
     case 'PATCH /me/settings':
       user = { ...user, ...(req.body as Partial<User>) }
       return json(200, user)
+    case 'GET /instances':
+    case 'GET /categories':
+      return json(200, [])
     case 'GET /me':
       return json(200, user)
     default:
@@ -74,10 +77,11 @@ afterEach(() => {
 })
 
 describe('app', () => {
-  it('signs in, then shows the home page with the user name', async () => {
+  it('signs in, then opens the calendar in the default view', async () => {
     renderApp('/')
 
-    expect(await screen.findByText(/Здравствуйте, Ann/)).toBeTruthy()
+    const day = await screen.findByRole('radio', { name: 'День' })
+    expect(day.getAttribute('aria-checked')).toBe('true')
     expect(net.calls[0]).toMatchObject({ method: 'POST', path: '/auth/dev' })
     expect((net.calls[0]?.body as { timezone: string }).timezone).toBeTruthy()
     // The user from the login response is reused: no extra /me request.
