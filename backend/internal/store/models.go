@@ -20,6 +20,12 @@ type Category struct {
 	CreatedAt  time.Time
 }
 
+type InstanceCategory struct {
+	InstanceID uuid.UUID
+	CategoryID uuid.UUID
+	UserID     uuid.UUID
+}
+
 type Session struct {
 	ID         uuid.UUID
 	UserID     uuid.UUID
@@ -27,6 +33,18 @@ type Session struct {
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	LastUsedAt time.Time
+}
+
+type TaskInstance struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Title        string
+	Description  string
+	PlannedStart time.Time
+	PlannedEnd   time.Time
+	Status       string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type User struct {

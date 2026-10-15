@@ -200,6 +200,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tasks planned within a time window
+         * @description Returns the tasks whose plan overlaps `[from, to)`, ordered by start.
+         *     A task that crosses the window edge is returned whole. The window is at
+         *     most 100 days.
+         */
+        get: operations["listInstances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a one-off task */
+        post: operations["createTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a task */
+        delete: operations["deleteInstance"];
+        options?: never;
+        head?: never;
+        /** Edit a task; omitted fields stay as they are */
+        patch: operations["updateInstance"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -300,6 +359,43 @@ export interface components {
              */
             parent_id?: string;
         };
+        /** @enum {string} */
+        InstanceStatus: "planned" | "in_progress" | "done" | "partial" | "not_done" | "rescheduled" | "cancelled";
+        Instance: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            /** Format: date-time */
+            planned_start: string;
+            /** Format: date-time */
+            planned_end: string;
+            status: components["schemas"]["InstanceStatus"];
+            category_ids: string[];
+        };
+        CreateTaskRequest: {
+            title: string;
+            description?: string;
+            /** Format: date-time */
+            planned_start: string;
+            /**
+             * Format: date-time
+             * @description Must be after `planned_start`; may be on a later day
+             */
+            planned_end: string;
+            category_ids?: string[];
+        };
+        UpdateInstanceRequest: {
+            title?: string;
+            /** @description An empty string clears the description */
+            description?: string;
+            /** Format: date-time */
+            planned_start?: string;
+            /** Format: date-time */
+            planned_end?: string;
+            /** @description Replaces the whole set; an empty array removes all categories */
+            category_ids?: string[];
+        };
     };
     responses: {
         /** @description Session token and the signed-in user */
@@ -340,6 +436,7 @@ export interface components {
         };
     };
     parameters: {
+        InstanceId: string;
         CategoryId: string;
     };
     requestBodies: never;
@@ -629,6 +726,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Category"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listInstances: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Created task */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInstanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
                 };
             };
             400: components["responses"]["BadRequest"];

@@ -12,6 +12,7 @@ tags:
   - name: auth
   - name: me
   - name: categories
+  - name: tasks
 paths:
   /healthz:
     get:
@@ -259,8 +260,109 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /instances:
+    get:
+      operationId: listInstances
+      summary: Tasks planned within a time window
+      description: |
+        Returns the tasks whose plan overlaps `[from, to)`, ordered by start.
+        A task that crosses the window edge is returned whole. The window is at
+        most 100 days.
+      tags: [tasks]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /tasks:
+    post:
+      operationId: createTask
+      summary: Create a one-off task
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /instances/{id}:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    patch:
+      operationId: updateInstance
+      summary: Edit a task; omitted fields stay as they are
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInstanceRequest"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteInstance
+      summary: Delete a task
+      tags: [tasks]
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    InstanceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CategoryId:
       name: id
       in: path
@@ -450,3 +552,78 @@ components:
           type: string
           format: uuid
           description: New parent; omit to move the category to the top level
+    InstanceStatus:
+      type: string
+      enum: [planned, in_progress, done, partial, not_done, rescheduled, cancelled]
+    Instance:
+      type: object
+      required: [id, title, description, planned_start, planned_end, status, category_ids]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        planned_start:
+          type: string
+          format: date-time
+        planned_end:
+          type: string
+          format: date-time
+        status:
+          $ref: "#/components/schemas/InstanceStatus"
+        category_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    CreateTaskRequest:
+      type: object
+      required: [title, planned_start, planned_end]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 5000
+        planned_start:
+          type: string
+          format: date-time
+        planned_end:
+          type: string
+          format: date-time
+          description: Must be after `planned_start`; may be on a later day
+        category_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+    UpdateInstanceRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 5000
+          description: An empty string clears the description
+        planned_start:
+          type: string
+          format: date-time
+        planned_end:
+          type: string
+          format: date-time
+        category_ids:
+          type: array
+          maxItems: 50
+          description: Replaces the whole set; an empty array removes all categories
+          items:
+            type: string
+            format: uuid

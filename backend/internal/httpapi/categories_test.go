@@ -24,16 +24,22 @@ func (a *testAPI) createCat(token, name string, parent any) string {
 
 func (a *testAPI) listCats(token string) []map[string]any {
 	a.t.Helper()
-	req := httptest.NewRequestWithContext(a.t.Context(), "GET", "/api/v1/categories", nil)
+	return a.getArray("/categories", token)
+}
+
+// getArray fetches an endpoint that answers with a JSON array.
+func (a *testAPI) getArray(path, token string) []map[string]any {
+	a.t.Helper()
+	req := httptest.NewRequestWithContext(a.t.Context(), "GET", "/api/v1"+path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	a.handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		a.t.Fatalf("list categories: status %d, body %s", rec.Code, rec.Body)
+		a.t.Fatalf("GET %s: status %d, body %s", path, rec.Code, rec.Body)
 	}
 	var out []map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		a.t.Fatalf("list categories: not a JSON array: %q", rec.Body)
+		a.t.Fatalf("GET %s: not a JSON array: %q", path, rec.Body)
 	}
 	return out
 }

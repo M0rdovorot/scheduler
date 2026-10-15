@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -28,6 +29,39 @@ func (e HealthStatus) Valid() bool {
 	case Ok:
 		return true
 	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceStatus.
+const (
+	Cancelled   InstanceStatus = "cancelled"
+	Done        InstanceStatus = "done"
+	InProgress  InstanceStatus = "in_progress"
+	NotDone     InstanceStatus = "not_done"
+	Partial     InstanceStatus = "partial"
+	Planned     InstanceStatus = "planned"
+	Rescheduled InstanceStatus = "rescheduled"
+)
+
+// Valid indicates whether the value is a known member of the InstanceStatus enum.
+func (e InstanceStatus) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case Done:
+		return true
+	case InProgress:
+		return true
+	case NotDone:
+		return true
+	case Partial:
+		return true
+	case Planned:
+		return true
+	case Rescheduled:
 		return true
 	default:
 		return false
@@ -107,6 +141,17 @@ type CreateCategoryRequest struct {
 	ParentId *openapi_types.UUID `json:"parent_id,omitempty"`
 }
 
+// CreateTaskRequest defines model for CreateTaskRequest.
+type CreateTaskRequest struct {
+	CategoryIds *[]openapi_types.UUID `json:"category_ids,omitempty"`
+	Description *string               `json:"description,omitempty"`
+
+	// PlannedEnd Must be after `planned_start`; may be on a later day
+	PlannedEnd   time.Time `json:"planned_end"`
+	PlannedStart time.Time `json:"planned_start"`
+	Title        string    `json:"title"`
+}
+
 // DevLoginRequest defines model for DevLoginRequest.
 type DevLoginRequest struct {
 	DisplayName *string `json:"display_name,omitempty"`
@@ -137,6 +182,20 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// Instance defines model for Instance.
+type Instance struct {
+	CategoryIds  []openapi_types.UUID `json:"category_ids"`
+	Description  string               `json:"description"`
+	Id           openapi_types.UUID   `json:"id"`
+	PlannedEnd   time.Time            `json:"planned_end"`
+	PlannedStart time.Time            `json:"planned_start"`
+	Status       InstanceStatus       `json:"status"`
+	Title        string               `json:"title"`
+}
+
+// InstanceStatus defines model for InstanceStatus.
+type InstanceStatus string
 
 // MoveCategoryRequest defines model for MoveCategoryRequest.
 type MoveCategoryRequest struct {
@@ -182,6 +241,18 @@ type UpdateCategoryRequest struct {
 	Name  *string `json:"name,omitempty"`
 }
 
+// UpdateInstanceRequest defines model for UpdateInstanceRequest.
+type UpdateInstanceRequest struct {
+	// CategoryIds Replaces the whole set; an empty array removes all categories
+	CategoryIds *[]openapi_types.UUID `json:"category_ids,omitempty"`
+
+	// Description An empty string clears the description
+	Description  *string    `json:"description,omitempty"`
+	PlannedEnd   *time.Time `json:"planned_end,omitempty"`
+	PlannedStart *time.Time `json:"planned_start,omitempty"`
+	Title        *string    `json:"title,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	DefaultView               ViewMode           `json:"default_view"`
@@ -200,6 +271,9 @@ type ViewMode string
 // CategoryId defines model for CategoryId.
 type CategoryId = openapi_types.UUID
 
+// InstanceId defines model for InstanceId.
+type InstanceId = openapi_types.UUID
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -211,6 +285,12 @@ type SessionIssued = Session
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
+
+// ListInstancesParams defines parameters for ListInstances.
+type ListInstancesParams struct {
+	From time.Time `form:"from" json:"from"`
+	To   time.Time `form:"to" json:"to"`
+}
 
 // LoginDevJSONRequestBody defines body for LoginDev for application/json ContentType.
 type LoginDevJSONRequestBody = DevLoginRequest
@@ -227,8 +307,14 @@ type UpdateCategoryJSONRequestBody = UpdateCategoryRequest
 // MoveCategoryJSONRequestBody defines body for MoveCategory for application/json ContentType.
 type MoveCategoryJSONRequestBody = MoveCategoryRequest
 
+// UpdateInstanceJSONRequestBody defines body for UpdateInstance for application/json ContentType.
+type UpdateInstanceJSONRequestBody = UpdateInstanceRequest
+
 // UpdateMySettingsJSONRequestBody defines body for UpdateMySettings for application/json ContentType.
 type UpdateMySettingsJSONRequestBody = SettingsPatch
+
+// CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
+type CreateTaskJSONRequestBody = CreateTaskRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -262,12 +348,24 @@ type ServerInterface interface {
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListInstances Tasks planned within a time window
+	// (GET /instances)
+	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
+	// DeleteInstance Delete a task
+	// (DELETE /instances/{id})
+	DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	// UpdateInstance Edit a task; omitted fields stay as they are
+	// (PATCH /instances/{id})
+	UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
 	// GetMe Current user with settings
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(w http.ResponseWriter, r *http.Request)
+	// CreateTask Create a one-off task
+	// (POST /tasks)
+	CreateTask(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -334,6 +432,24 @@ func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListInstances Tasks planned within a time window
+// (GET /instances)
+func (_ Unimplemented) ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteInstance Delete a task
+// (DELETE /instances/{id})
+func (_ Unimplemented) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateInstance Edit a task; omitted fields stay as they are
+// (PATCH /instances/{id})
+func (_ Unimplemented) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetMe Current user with settings
 // (GET /me)
 func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -343,6 +459,12 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMySettings Change settings; omitted fields stay as they are
 // (PATCH /me/settings)
 func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTask Create a one-off task
+// (POST /tasks)
+func (_ Unimplemented) CreateTask(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -555,6 +677,104 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListInstances operation middleware
+func (siw *ServerInterfaceWrapper) ListInstances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInstancesParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInstances(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInstance operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateInstance operation middleware
+func (siw *ServerInterfaceWrapper) UpdateInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -574,6 +794,20 @@ func (siw *ServerInterfaceWrapper) UpdateMySettings(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMySettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTask(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -731,6 +965,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/categories/{id}/unarchive", wrapper.UnarchiveCategory)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/instances", wrapper.ListInstances)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/tasks", wrapper.CreateTask)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/instances/{id}", wrapper.DeleteInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/instances/{id}", wrapper.UpdateInstance)
 	})
 
 	return r
@@ -1252,6 +1498,165 @@ func (response GetHealth503JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type ListInstancesRequestObject struct {
+	Params ListInstancesParams
+}
+
+type ListInstancesResponseObject interface {
+	VisitListInstancesResponse(w http.ResponseWriter) error
+}
+
+type ListInstances200JSONResponse []Instance
+
+func (response ListInstances200JSONResponse) VisitListInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInstances400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListInstances400JSONResponse) VisitListInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInstances401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListInstances401JSONResponse) VisitListInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRequestObject struct {
+	Id InstanceId `json:"id"`
+}
+
+type DeleteInstanceResponseObject interface {
+	VisitDeleteInstanceResponse(w http.ResponseWriter) error
+}
+
+type DeleteInstance204Response struct {
+}
+
+func (response DeleteInstance204Response) VisitDeleteInstanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteInstance401JSONResponse) VisitDeleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteInstance404JSONResponse) VisitDeleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstanceRequestObject struct {
+	Id   InstanceId `json:"id"`
+	Body *UpdateInstanceJSONRequestBody
+}
+
+type UpdateInstanceResponseObject interface {
+	VisitUpdateInstanceResponse(w http.ResponseWriter) error
+}
+
+type UpdateInstance200JSONResponse Instance
+
+func (response UpdateInstance200JSONResponse) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateInstance400JSONResponse) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateInstance401JSONResponse) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateInstance404JSONResponse) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMeRequestObject struct {
 }
 
@@ -1337,6 +1742,56 @@ func (response UpdateMySettings401JSONResponse) VisitUpdateMySettingsResponse(w 
 	return err
 }
 
+type CreateTaskRequestObject struct {
+	Body *CreateTaskJSONRequestBody
+}
+
+type CreateTaskResponseObject interface {
+	VisitCreateTaskResponse(w http.ResponseWriter) error
+}
+
+type CreateTask201JSONResponse Instance
+
+func (response CreateTask201JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTask400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateTask400JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTask401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateTask401JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// LoginDev Sign in without Telegram (development only)
@@ -1369,12 +1824,24 @@ type StrictServerInterface interface {
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// ListInstances Tasks planned within a time window
+	// (GET /instances)
+	ListInstances(ctx context.Context, request ListInstancesRequestObject) (ListInstancesResponseObject, error)
+	// DeleteInstance Delete a task
+	// (DELETE /instances/{id})
+	DeleteInstance(ctx context.Context, request DeleteInstanceRequestObject) (DeleteInstanceResponseObject, error)
+	// UpdateInstance Edit a task; omitted fields stay as they are
+	// (PATCH /instances/{id})
+	UpdateInstance(ctx context.Context, request UpdateInstanceRequestObject) (UpdateInstanceResponseObject, error)
 	// GetMe Current user with settings
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(ctx context.Context, request UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error)
+	// CreateTask Create a one-off task
+	// (POST /tasks)
+	CreateTask(ctx context.Context, request CreateTaskRequestObject) (CreateTaskResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1701,6 +2168,91 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListInstances operation middleware
+func (sh *strictHandler) ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams) {
+	var request ListInstancesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInstances(ctx, request.(ListInstancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInstances")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInstancesResponseObject); ok {
+		if err := validResponse.VisitListInstancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInstance operation middleware
+func (sh *strictHandler) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request DeleteInstanceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInstance(ctx, request.(DeleteInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInstanceResponseObject); ok {
+		if err := validResponse.VisitDeleteInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateInstance operation middleware
+func (sh *strictHandler) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request UpdateInstanceRequestObject
+
+	request.Id = id
+
+	var body UpdateInstanceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateInstance(ctx, request.(UpdateInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateInstanceResponseObject); ok {
+		if err := validResponse.VisitUpdateInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMe operation middleware
 func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	var request GetMeRequestObject
@@ -1749,6 +2301,37 @@ func (sh *strictHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateMySettingsResponseObject); ok {
 		if err := validResponse.VisitUpdateMySettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTask operation middleware
+func (sh *strictHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	var request CreateTaskRequestObject
+
+	var body CreateTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTask(ctx, request.(CreateTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTaskResponseObject); ok {
+		if err := validResponse.VisitCreateTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

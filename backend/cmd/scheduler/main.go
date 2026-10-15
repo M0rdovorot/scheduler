@@ -18,6 +18,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
+	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
 )
@@ -64,6 +65,7 @@ func run() error {
 		}),
 		Users:      user.NewService(st),
 		Categories: category.NewService(st),
+		Tasks:      task.NewService(st),
 	})
 
 	srv := &http.Server{

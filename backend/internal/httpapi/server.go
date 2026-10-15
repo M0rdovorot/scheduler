@@ -14,6 +14,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
+	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
 	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
@@ -35,6 +36,7 @@ type Deps struct {
 	Auth       *auth.Service
 	Users      *user.Service
 	Categories *category.Service
+	Tasks      *task.Service
 }
 
 // Server implements StrictServerInterface.

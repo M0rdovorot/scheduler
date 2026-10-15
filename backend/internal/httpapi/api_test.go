@@ -19,6 +19,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
+	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
@@ -42,6 +43,7 @@ func newTestAPI(t *testing.T, devAuth bool) *testAPI {
 		}),
 		Users:      user.NewService(st),
 		Categories: category.NewService(st),
+		Tasks:      task.NewService(st),
 	})
 	return &testAPI{t: t, handler: NewRouter(srv, slog.New(slog.NewTextHandler(io.Discard, nil)))}
 }
