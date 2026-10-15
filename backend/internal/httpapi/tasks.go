@@ -35,6 +35,9 @@ func (s *Server) CreateTask(ctx context.Context, req CreateTaskRequestObject) (C
 	if b.CategoryIds != nil {
 		in.CategoryIDs = *b.CategoryIds
 	}
+	if b.Recurrence != nil {
+		in.Recurrence = &b.Recurrence.Rrule
+	}
 
 	created, err := s.Tasks.Create(ctx, userID(ctx), in)
 	var verr *validation.Error
@@ -48,11 +51,20 @@ func (s *Server) CreateTask(ctx context.Context, req CreateTaskRequestObject) (C
 }
 
 func (s *Server) UpdateInstance(ctx context.Context, req UpdateInstanceRequestObject) (UpdateInstanceResponseObject, error) {
+	scope, ok := parseScope(req.Params.Scope)
+	if !ok {
+		return UpdateInstance400JSONResponse{BadRequestJSONResponse(scopeError())}, nil
+	}
 	b := req.Body
-	updated, err := s.Tasks.Update(ctx, userID(ctx), req.Id, task.UpdateInput{
+	in := task.UpdateInput{
 		Title: b.Title, Description: b.Description, PlannedStart: b.PlannedStart,
 		PlannedEnd: b.PlannedEnd, CategoryIDs: b.CategoryIds,
-	})
+	}
+	if b.Recurrence != nil {
+		in.Recurrence = &b.Recurrence.Rrule
+	}
+
+	updated, err := s.Tasks.Update(ctx, userID(ctx), req.Id, scope, in)
 	var verr *validation.Error
 	switch {
 	case errors.As(err, &verr):
@@ -62,19 +74,58 @@ func (s *Server) UpdateInstance(ctx context.Context, req UpdateInstanceRequestOb
 	case err != nil:
 		return nil, err
 	}
-	return UpdateInstance200JSONResponse(toInstance(updated)), nil
+	if updated == nil {
+		return UpdateInstance204Response{}, nil
+	}
+	return UpdateInstance200JSONResponse(toInstance(*updated)), nil
 }
 
 func (s *Server) DeleteInstance(ctx context.Context, req DeleteInstanceRequestObject) (DeleteInstanceResponseObject, error) {
-	err := s.Tasks.Delete(ctx, userID(ctx), req.Id)
-	if errors.Is(err, task.ErrNotFound) {
-		return DeleteInstance404JSONResponse{NotFoundJSONResponse(taskNotFound())}, nil
+	scope, ok := parseScope(req.Params.Scope)
+	if !ok {
+		return DeleteInstance400JSONResponse{BadRequestJSONResponse(scopeError())}, nil
 	}
-	if err != nil {
+	err := s.Tasks.Delete(ctx, userID(ctx), req.Id, scope)
+	var verr *validation.Error
+	switch {
+	case errors.As(err, &verr):
+		return DeleteInstance400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, task.ErrNotFound):
+		return DeleteInstance404JSONResponse{NotFoundJSONResponse(taskNotFound())}, nil
+	case err != nil:
 		return nil, err
 	}
 	return DeleteInstance204Response{}, nil
 }
+
+func (s *Server) GetSeries(ctx context.Context, req GetSeriesRequestObject) (GetSeriesResponseObject, error) {
+	series, err := s.Tasks.GetSeries(ctx, userID(ctx), req.Id)
+	if errors.Is(err, task.ErrSeriesNotFound) {
+		return GetSeries404JSONResponse{NotFoundJSONResponse(Error{Code: "not_found", Message: "series not found"})}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return GetSeries200JSONResponse{
+		Id: series.ID, Title: series.Title, Description: series.Description, Rrule: series.RRule,
+		StartLocal: series.StartLocal, Timezone: series.Timezone,
+		DurationMinutes: series.DurationMinutes, CategoryIds: series.CategoryIDs,
+	}, nil
+}
+
+// parseScope reads the optional scope parameter of an edit or a delete.
+func parseScope[T ~string](p *T) (task.Scope, bool) {
+	if p == nil {
+		return task.ScopeThis, true
+	}
+	return task.ParseScope(string(*p))
+}
+
+func scopeError() Error {
+	return Error{Code: "validation_failed", Message: "scope: must be this, following or all", Field: ptrTo("scope")}
+}
+
+func ptrTo[T any](v T) *T { return &v }
 
 func toInstance(in task.Instance) Instance {
 	ids := in.CategoryIDs
@@ -84,7 +135,7 @@ func toInstance(in task.Instance) Instance {
 	return Instance{
 		Id: in.ID, Title: in.Title, Description: in.Description,
 		PlannedStart: in.PlannedStart, PlannedEnd: in.PlannedEnd,
-		Status: InstanceStatus(in.Status), CategoryIds: ids,
+		Status: InstanceStatus(in.Status), CategoryIds: ids, SeriesId: in.SeriesID,
 	}
 }
 

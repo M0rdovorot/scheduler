@@ -1,17 +1,18 @@
 -- name: ListInstances :many
--- Tasks whose plan overlaps [from, to).
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status,
+-- Tasks whose plan overlaps [from, to). Cancelled ones (deleted occurrences of a series) are not part of the plan.
+SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
        COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
 FROM task_instances ti
 LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
 WHERE ti.user_id = @user_id
   AND ti.planned_start < @range_to
   AND ti.planned_end > @range_from
+  AND ti.status <> 'cancelled'
 GROUP BY ti.id
 ORDER BY ti.planned_start, ti.id;
 
 -- name: GetInstance :one
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status,
+SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
        COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
 FROM task_instances ti
 LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
@@ -30,7 +31,8 @@ RETURNING id;
 
 -- name: UpdateInstance :exec
 UPDATE task_instances
-SET title = $3, description = $4, planned_start = $5, planned_end = $6, updated_at = now()
+SET title = $3, description = $4, planned_start = $5, planned_end = $6,
+    is_detached = is_detached OR @detach::boolean, updated_at = now()
 WHERE id = $1 AND user_id = $2;
 
 -- name: DeleteInstance :execrows

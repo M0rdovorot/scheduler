@@ -323,7 +323,19 @@ paths:
     patch:
       operationId: updateInstance
       summary: Edit a task; omitted fields stay as they are
+      description: |
+        With `scope=this` (the default) the task is changed on its own and answers with it;
+        an occurrence of a regular task then becomes independent of later edits of the series.
+
+        With `scope=following` or `all` the series is rewritten and the answer is 204:
+        occurrences that are still planned and untouched are re-created from the new
+        template when their window is next requested, so their ids change. Marked
+        occurrences (with a fact or a status other than planned) are never changed.
+        Only the time of day and the duration can change this way; a new date is
+        refused with code `series_date_change`. `recurrence` changes the repeat rule.
       tags: [tasks]
+      parameters:
+        - $ref: "#/components/parameters/Scope"
       requestBody:
         required: true
         content:
@@ -332,11 +344,13 @@ paths:
               $ref: "#/components/schemas/UpdateInstanceRequest"
       responses:
         "200":
-          description: Updated task
+          description: Updated task (`scope=this`)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Instance"
+        "204":
+          description: The series was rewritten (`scope=following` or `all`)
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -346,16 +360,61 @@ paths:
     delete:
       operationId: deleteInstance
       summary: Delete a task
+      description: |
+        Deleting one occurrence of a regular task keeps it as cancelled, so it is not
+        created again. `following` and `all` delete the planned occurrences of the
+        series; marked ones are history and stay as one-off tasks.
       tags: [tasks]
+      parameters:
+        - $ref: "#/components/parameters/Scope"
       responses:
         "204":
           description: Deleted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /series/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SeriesId"
+    get:
+      operationId: getSeries
+      summary: The template of a regular task
+      tags: [tasks]
+      responses:
+        "200":
+          description: Series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Series"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    SeriesId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Scope:
+      name: scope
+      in: query
+      required: false
+      description: |
+        What an edit or a delete of an occurrence of a regular task applies to:
+        only this one, this and the following ones, or all of them. A one-off
+        task accepts only `this`.
+      schema:
+        type: string
+        enum: [this, following, all]
+        default: this
     InstanceId:
       name: id
       in: path
@@ -557,11 +616,16 @@ components:
       enum: [planned, in_progress, done, partial, not_done, rescheduled, cancelled]
     Instance:
       type: object
-      required: [id, title, description, planned_start, planned_end, status, category_ids]
+      required: [id, title, description, planned_start, planned_end, status, category_ids, series_id]
       properties:
         id:
           type: string
           format: uuid
+        series_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Set for occurrences of a regular task; see `GET /series/{id}`
         title:
           type: string
         description:
@@ -603,6 +667,8 @@ components:
           items:
             type: string
             format: uuid
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
     UpdateInstanceRequest:
       type: object
       properties:
@@ -624,6 +690,51 @@ components:
           type: array
           maxItems: 50
           description: Replaces the whole set; an empty array removes all categories
+          items:
+            type: string
+            format: uuid
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+    Recurrence:
+      type: object
+      required: [rrule]
+      description: |
+        Repeat rule of a regular task. The first occurrence slot of a new task is its
+        `planned_start`–`planned_end`; times are repeated by the wall clock of the
+        user's time zone, also across daylight saving changes. Error codes:
+        `no_occurrences` (the rule has no occurrence from the start on).
+      properties:
+        rrule:
+          type: string
+          maxLength: 200
+          example: FREQ=WEEKLY;BYDAY=MO,WE
+          description: |
+            RRULE (RFC 5545) without DTSTART. Supported: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY,
+            INTERVAL, BYDAY (weekdays for WEEKLY; one ordinal weekday like `2TU` or `-1FR`
+            for MONTHLY), BYMONTHDAY (MONTHLY), and COUNT or UNTIL (UTC, `20261231T205959Z`).
+    Series:
+      type: object
+      required: [id, title, description, rrule, start_local, timezone, duration_minutes, category_ids]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        rrule:
+          type: string
+        start_local:
+          type: string
+          example: "2026-10-14T09:00"
+          description: Wall-clock start of the first occurrence slot, read in `timezone`
+        timezone:
+          type: string
+        duration_minutes:
+          type: integer
+        category_ids:
+          type: array
           items:
             type: string
             format: uuid

@@ -65,6 +65,19 @@ func (e *env) create(title string, start, end time.Time, cats ...uuid.UUID) task
 	return in
 }
 
+// update is a one-off edit (ScopeThis) returning the task.
+func (e *env) update(ctx context.Context, user, id uuid.UUID, in task.UpdateInput) (task.Instance, error) {
+	got, err := e.svc.Update(ctx, user, id, task.ScopeThis, in)
+	if got == nil {
+		return task.Instance{}, err
+	}
+	return *got, err
+}
+
+func (e *env) del(ctx context.Context, user, id uuid.UUID) error {
+	return e.svc.Delete(ctx, user, id, task.ScopeThis)
+}
+
 func wantField(t *testing.T, err error, field string) {
 	t.Helper()
 	var verr *validation.Error
@@ -218,7 +231,7 @@ func TestUpdate(t *testing.T) {
 	work, sport := e.category(e.user, "Работа"), e.category(e.user, "Спорт")
 	in := e.create("Старое", at(10, 0), at(11, 0), work)
 
-	got, err := e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{Title: ptr(" Новое "), Description: ptr("d")})
+	got, err := e.update(ctx, e.user, in.ID, task.UpdateInput{Title: ptr(" Новое "), Description: ptr("d")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,31 +240,31 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Moving only the end keeps the start; the merged range must stay valid.
-	got, err = e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{PlannedEnd: ptr(at(12, 0))})
+	got, err = e.update(ctx, e.user, in.ID, task.UpdateInput{PlannedEnd: ptr(at(12, 0))})
 	if err != nil || !got.PlannedEnd.Equal(at(12, 0)) || !got.PlannedStart.Equal(at(10, 0)) {
 		t.Errorf("end update = %+v, %v", got, err)
 	}
-	_, err = e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{PlannedStart: ptr(at(13, 0))})
+	_, err = e.update(ctx, e.user, in.ID, task.UpdateInput{PlannedStart: ptr(at(13, 0))})
 	wantField(t, err, "planned_end")
 
 	// Categories are replaced as a set; an empty set clears them.
-	got, err = e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{CategoryIDs: &[]uuid.UUID{sport}})
+	got, err = e.update(ctx, e.user, in.ID, task.UpdateInput{CategoryIDs: &[]uuid.UUID{sport}})
 	if err != nil || len(got.CategoryIDs) != 1 || got.CategoryIDs[0] != sport {
 		t.Errorf("replace categories = %+v, %v", got, err)
 	}
-	got, err = e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{CategoryIDs: &[]uuid.UUID{}})
+	got, err = e.update(ctx, e.user, in.ID, task.UpdateInput{CategoryIDs: &[]uuid.UUID{}})
 	if err != nil || len(got.CategoryIDs) != 0 {
 		t.Errorf("clear categories = %+v, %v", got, err)
 	}
 
 	// A rejected update changes nothing.
-	_, err = e.svc.Update(ctx, e.user, in.ID, task.UpdateInput{Title: ptr("changed"), CategoryIDs: &[]uuid.UUID{uuid.New()}})
+	_, err = e.update(ctx, e.user, in.ID, task.UpdateInput{Title: ptr("changed"), CategoryIDs: &[]uuid.UUID{uuid.New()}})
 	wantField(t, err, "category_ids")
 	if after, _ := e.svc.Get(ctx, e.user, in.ID); after.Title != "Новое" {
 		t.Errorf("title = %q after a rejected update", after.Title)
 	}
 
-	if _, err := e.svc.Update(ctx, e.user, uuid.New(), task.UpdateInput{Title: ptr("x")}); !errors.Is(err, task.ErrNotFound) {
+	if _, err := e.update(ctx, e.user, uuid.New(), task.UpdateInput{Title: ptr("x")}); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("unknown id: %v", err)
 	}
 }
@@ -260,10 +273,10 @@ func TestDelete(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	in := e.create("x", at(10, 0), at(11, 0))
-	if err := e.svc.Delete(ctx, e.user, in.ID); err != nil {
+	if err := e.del(ctx, e.user, in.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.Delete(ctx, e.user, in.ID); !errors.Is(err, task.ErrNotFound) {
+	if err := e.del(ctx, e.user, in.ID); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("second delete: %v", err)
 	}
 	if _, err := e.svc.Get(ctx, e.user, in.ID); !errors.Is(err, task.ErrNotFound) {
@@ -282,10 +295,10 @@ func TestUsersAreIsolated(t *testing.T) {
 	if _, err := e.svc.Get(ctx, e.other, mine.ID); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("Get: %v", err)
 	}
-	if _, err := e.svc.Update(ctx, e.other, mine.ID, task.UpdateInput{Title: ptr("hacked")}); !errors.Is(err, task.ErrNotFound) {
+	if _, err := e.update(ctx, e.other, mine.ID, task.UpdateInput{Title: ptr("hacked")}); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("Update: %v", err)
 	}
-	if err := e.svc.Delete(ctx, e.other, mine.ID); !errors.Is(err, task.ErrNotFound) {
+	if err := e.del(ctx, e.other, mine.ID); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("Delete: %v", err)
 	}
 	if got, _ := e.svc.Get(ctx, e.user, mine.ID); got.Title != "Моё" {

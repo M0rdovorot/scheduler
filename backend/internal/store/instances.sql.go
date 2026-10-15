@@ -104,7 +104,7 @@ func (q *Queries) DeleteInstance(ctx context.Context, arg DeleteInstanceParams) 
 }
 
 const getInstance = `-- name: GetInstance :one
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status,
+SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
        COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
 FROM task_instances ti
 LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
@@ -124,6 +124,7 @@ type GetInstanceRow struct {
 	PlannedStart time.Time
 	PlannedEnd   time.Time
 	Status       string
+	SeriesID     uuid.NullUUID
 	CategoryIds  []uuid.UUID
 }
 
@@ -137,19 +138,21 @@ func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (GetIn
 		&i.PlannedStart,
 		&i.PlannedEnd,
 		&i.Status,
+		&i.SeriesID,
 		&i.CategoryIds,
 	)
 	return i, err
 }
 
 const listInstances = `-- name: ListInstances :many
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status,
+SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
        COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
 FROM task_instances ti
 LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
 WHERE ti.user_id = $1
   AND ti.planned_start < $2
   AND ti.planned_end > $3
+  AND ti.status <> 'cancelled'
 GROUP BY ti.id
 ORDER BY ti.planned_start, ti.id
 `
@@ -167,10 +170,11 @@ type ListInstancesRow struct {
 	PlannedStart time.Time
 	PlannedEnd   time.Time
 	Status       string
+	SeriesID     uuid.NullUUID
 	CategoryIds  []uuid.UUID
 }
 
-// Tasks whose plan overlaps [from, to).
+// Tasks whose plan overlaps [from, to). Cancelled ones (deleted occurrences of a series) are not part of the plan.
 func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([]ListInstancesRow, error) {
 	rows, err := q.db.Query(ctx, listInstances, arg.UserID, arg.RangeTo, arg.RangeFrom)
 	if err != nil {
@@ -187,6 +191,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 			&i.PlannedStart,
 			&i.PlannedEnd,
 			&i.Status,
+			&i.SeriesID,
 			&i.CategoryIds,
 		); err != nil {
 			return nil, err
@@ -200,7 +205,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 }
 
 const lockInstance = `-- name: LockInstance :one
-SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at FROM task_instances
+SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached FROM task_instances
 WHERE id = $1 AND user_id = $2
 FOR UPDATE
 `
@@ -223,13 +228,17 @@ func (q *Queries) LockInstance(ctx context.Context, arg LockInstanceParams) (Tas
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SeriesID,
+		&i.OriginalStart,
+		&i.IsDetached,
 	)
 	return i, err
 }
 
 const updateInstance = `-- name: UpdateInstance :exec
 UPDATE task_instances
-SET title = $3, description = $4, planned_start = $5, planned_end = $6, updated_at = now()
+SET title = $3, description = $4, planned_start = $5, planned_end = $6,
+    is_detached = is_detached OR $7::boolean, updated_at = now()
 WHERE id = $1 AND user_id = $2
 `
 
@@ -240,6 +249,7 @@ type UpdateInstanceParams struct {
 	Description  string
 	PlannedStart time.Time
 	PlannedEnd   time.Time
+	Detach       bool
 }
 
 func (q *Queries) UpdateInstance(ctx context.Context, arg UpdateInstanceParams) error {
@@ -250,6 +260,7 @@ func (q *Queries) UpdateInstance(ctx context.Context, arg UpdateInstanceParams) 
 		arg.Description,
 		arg.PlannedStart,
 		arg.PlannedEnd,
+		arg.Detach,
 	)
 	return err
 }

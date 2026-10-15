@@ -116,6 +116,69 @@ func (e ViewMode) Valid() bool {
 	}
 }
 
+// Defines values for Scope.
+const (
+	ScopeAll       Scope = "all"
+	ScopeFollowing Scope = "following"
+	ScopeThis      Scope = "this"
+)
+
+// Valid indicates whether the value is a known member of the Scope enum.
+func (e Scope) Valid() bool {
+	switch e {
+	case ScopeAll:
+		return true
+	case ScopeFollowing:
+		return true
+	case ScopeThis:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeleteInstanceParamsScope.
+const (
+	DeleteInstanceParamsScopeAll       DeleteInstanceParamsScope = "all"
+	DeleteInstanceParamsScopeFollowing DeleteInstanceParamsScope = "following"
+	DeleteInstanceParamsScopeThis      DeleteInstanceParamsScope = "this"
+)
+
+// Valid indicates whether the value is a known member of the DeleteInstanceParamsScope enum.
+func (e DeleteInstanceParamsScope) Valid() bool {
+	switch e {
+	case DeleteInstanceParamsScopeAll:
+		return true
+	case DeleteInstanceParamsScopeFollowing:
+		return true
+	case DeleteInstanceParamsScopeThis:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateInstanceParamsScope.
+const (
+	UpdateInstanceParamsScopeAll       UpdateInstanceParamsScope = "all"
+	UpdateInstanceParamsScopeFollowing UpdateInstanceParamsScope = "following"
+	UpdateInstanceParamsScopeThis      UpdateInstanceParamsScope = "this"
+)
+
+// Valid indicates whether the value is a known member of the UpdateInstanceParamsScope enum.
+func (e UpdateInstanceParamsScope) Valid() bool {
+	switch e {
+	case UpdateInstanceParamsScopeAll:
+		return true
+	case UpdateInstanceParamsScopeFollowing:
+		return true
+	case UpdateInstanceParamsScopeThis:
+		return true
+	default:
+		return false
+	}
+}
+
 // Category defines model for Category.
 type Category struct {
 	ArchivedAt *time.Time `json:"archived_at"`
@@ -149,7 +212,13 @@ type CreateTaskRequest struct {
 	// PlannedEnd Must be after `planned_start`; may be on a later day
 	PlannedEnd   time.Time `json:"planned_end"`
 	PlannedStart time.Time `json:"planned_start"`
-	Title        string    `json:"title"`
+
+	// Recurrence Repeat rule of a regular task. The first occurrence slot of a new task is its
+	// `planned_start`–`planned_end`; times are repeated by the wall clock of the
+	// user's time zone, also across daylight saving changes. Error codes:
+	// `no_occurrences` (the rule has no occurrence from the start on).
+	Recurrence *Recurrence `json:"recurrence,omitempty"`
+	Title      string      `json:"title"`
 }
 
 // DevLoginRequest defines model for DevLoginRequest.
@@ -190,8 +259,11 @@ type Instance struct {
 	Id           openapi_types.UUID   `json:"id"`
 	PlannedEnd   time.Time            `json:"planned_end"`
 	PlannedStart time.Time            `json:"planned_start"`
-	Status       InstanceStatus       `json:"status"`
-	Title        string               `json:"title"`
+
+	// SeriesId Set for occurrences of a regular task; see `GET /series/{id}`
+	SeriesId *openapi_types.UUID `json:"series_id"`
+	Status   InstanceStatus      `json:"status"`
+	Title    string              `json:"title"`
 }
 
 // InstanceStatus defines model for InstanceStatus.
@@ -201,6 +273,36 @@ type InstanceStatus string
 type MoveCategoryRequest struct {
 	// ParentId New parent; omit to move the category to the top level
 	ParentId *openapi_types.UUID `json:"parent_id,omitempty"`
+}
+
+// Recurrence Repeat rule of a regular task. The first occurrence slot of a new task is its
+// `planned_start`–`planned_end`; times are repeated by the wall clock of the
+// user's time zone, also across daylight saving changes. Error codes:
+// `no_occurrences` (the rule has no occurrence from the start on).
+type Recurrence struct {
+	// Rrule RRULE (RFC 5545) without DTSTART. Supported: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY,
+	// INTERVAL, BYDAY (weekdays for WEEKLY; one ordinal weekday like `2TU` or `-1FR`
+	// for MONTHLY), BYMONTHDAY (MONTHLY), and COUNT or UNTIL (UTC, `20261231T205959Z`).
+	//
+	//
+	// Example: FREQ=WEEKLY;BYDAY=MO,WE
+	Rrule string `json:"rrule"`
+}
+
+// Series defines model for Series.
+type Series struct {
+	CategoryIds     []openapi_types.UUID `json:"category_ids"`
+	Description     string               `json:"description"`
+	DurationMinutes int                  `json:"duration_minutes"`
+	Id              openapi_types.UUID   `json:"id"`
+	Rrule           string               `json:"rrule"`
+
+	// StartLocal Wall-clock start of the first occurrence slot, read in `timezone`
+	//
+	// Example: 2026-10-14T09:00
+	StartLocal string `json:"start_local"`
+	Timezone   string `json:"timezone"`
+	Title      string `json:"title"`
 }
 
 // Session defines model for Session.
@@ -250,7 +352,13 @@ type UpdateInstanceRequest struct {
 	Description  *string    `json:"description,omitempty"`
 	PlannedEnd   *time.Time `json:"planned_end,omitempty"`
 	PlannedStart *time.Time `json:"planned_start,omitempty"`
-	Title        *string    `json:"title,omitempty"`
+
+	// Recurrence Repeat rule of a regular task. The first occurrence slot of a new task is its
+	// `planned_start`–`planned_end`; times are repeated by the wall clock of the
+	// user's time zone, also across daylight saving changes. Error codes:
+	// `no_occurrences` (the rule has no occurrence from the start on).
+	Recurrence *Recurrence `json:"recurrence,omitempty"`
+	Title      *string     `json:"title,omitempty"`
 }
 
 // User defines model for User.
@@ -274,6 +382,12 @@ type CategoryId = openapi_types.UUID
 // InstanceId defines model for InstanceId.
 type InstanceId = openapi_types.UUID
 
+// Scope defines model for Scope.
+type Scope string
+
+// SeriesId defines model for SeriesId.
+type SeriesId = openapi_types.UUID
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -291,6 +405,28 @@ type ListInstancesParams struct {
 	From time.Time `form:"from" json:"from"`
 	To   time.Time `form:"to" json:"to"`
 }
+
+// DeleteInstanceParams defines parameters for DeleteInstance.
+type DeleteInstanceParams struct {
+	// Scope What an edit or a delete of an occurrence of a regular task applies to:
+	// only this one, this and the following ones, or all of them. A one-off
+	// task accepts only `this`.
+	Scope *DeleteInstanceParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
+// DeleteInstanceParamsScope defines parameters for DeleteInstance.
+type DeleteInstanceParamsScope string
+
+// UpdateInstanceParams defines parameters for UpdateInstance.
+type UpdateInstanceParams struct {
+	// Scope What an edit or a delete of an occurrence of a regular task applies to:
+	// only this one, this and the following ones, or all of them. A one-off
+	// task accepts only `this`.
+	Scope *UpdateInstanceParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+}
+
+// UpdateInstanceParamsScope defines parameters for UpdateInstance.
+type UpdateInstanceParamsScope string
 
 // LoginDevJSONRequestBody defines body for LoginDev for application/json ContentType.
 type LoginDevJSONRequestBody = DevLoginRequest
@@ -353,16 +489,19 @@ type ServerInterface interface {
 	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
 	// DeleteInstance Delete a task
 	// (DELETE /instances/{id})
-	DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams)
 	// UpdateInstance Edit a task; omitted fields stay as they are
 	// (PATCH /instances/{id})
-	UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params UpdateInstanceParams)
 	// GetMe Current user with settings
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(w http.ResponseWriter, r *http.Request)
+	// GetSeries The template of a regular task
+	// (GET /series/{id})
+	GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId)
 	// CreateTask Create a one-off task
 	// (POST /tasks)
 	CreateTask(w http.ResponseWriter, r *http.Request)
@@ -440,13 +579,13 @@ func (_ Unimplemented) ListInstances(w http.ResponseWriter, r *http.Request, par
 
 // DeleteInstance Delete a task
 // (DELETE /instances/{id})
-func (_ Unimplemented) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+func (_ Unimplemented) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // UpdateInstance Edit a task; omitted fields stay as they are
 // (PATCH /instances/{id})
-func (_ Unimplemented) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+func (_ Unimplemented) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params UpdateInstanceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -459,6 +598,12 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMySettings Change settings; omitted fields stay as they are
 // (PATCH /me/settings)
 func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetSeries The template of a regular task
+// (GET /series/{id})
+func (_ Unimplemented) GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -738,8 +883,24 @@ func (siw *ServerInterfaceWrapper) DeleteInstance(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteInstanceParams
+
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteInstance(w, r, id)
+		siw.Handler.DeleteInstance(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -764,8 +925,24 @@ func (siw *ServerInterfaceWrapper) UpdateInstance(w http.ResponseWriter, r *http
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateInstanceParams
+
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateInstance(w, r, id)
+		siw.Handler.UpdateInstance(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -794,6 +971,32 @@ func (siw *ServerInterfaceWrapper) UpdateMySettings(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMySettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSeries operation middleware
+func (siw *ServerInterfaceWrapper) GetSeries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id SeriesId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSeries(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -977,6 +1180,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/instances/{id}", wrapper.UpdateInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/series/{id}", wrapper.GetSeries)
 	})
 
 	return r
@@ -1549,7 +1755,8 @@ func (response ListInstances401JSONResponse) VisitListInstancesResponse(w http.R
 }
 
 type DeleteInstanceRequestObject struct {
-	Id InstanceId `json:"id"`
+	Id     InstanceId `json:"id"`
+	Params DeleteInstanceParams
 }
 
 type DeleteInstanceResponseObject interface {
@@ -1562,6 +1769,20 @@ type DeleteInstance204Response struct {
 func (response DeleteInstance204Response) VisitDeleteInstanceResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteInstance400JSONResponse) VisitDeleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteInstance401JSONResponse struct{ UnauthorizedJSONResponse }
@@ -1593,8 +1814,9 @@ func (response DeleteInstance404JSONResponse) VisitDeleteInstanceResponse(w http
 }
 
 type UpdateInstanceRequestObject struct {
-	Id   InstanceId `json:"id"`
-	Body *UpdateInstanceJSONRequestBody
+	Id     InstanceId `json:"id"`
+	Params UpdateInstanceParams
+	Body   *UpdateInstanceJSONRequestBody
 }
 
 type UpdateInstanceResponseObject interface {
@@ -1613,6 +1835,14 @@ func (response UpdateInstance200JSONResponse) VisitUpdateInstanceResponse(w http
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type UpdateInstance204Response struct {
+}
+
+func (response UpdateInstance204Response) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
 }
 
 type UpdateInstance400JSONResponse struct{ BadRequestJSONResponse }
@@ -1742,6 +1972,56 @@ func (response UpdateMySettings401JSONResponse) VisitUpdateMySettingsResponse(w 
 	return err
 }
 
+type GetSeriesRequestObject struct {
+	Id SeriesId `json:"id"`
+}
+
+type GetSeriesResponseObject interface {
+	VisitGetSeriesResponse(w http.ResponseWriter) error
+}
+
+type GetSeries200JSONResponse Series
+
+func (response GetSeries200JSONResponse) VisitGetSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSeries401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSeries401JSONResponse) VisitGetSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSeries404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSeries404JSONResponse) VisitGetSeriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateTaskRequestObject struct {
 	Body *CreateTaskJSONRequestBody
 }
@@ -1839,6 +2119,9 @@ type StrictServerInterface interface {
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(ctx context.Context, request UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error)
+	// GetSeries The template of a regular task
+	// (GET /series/{id})
+	GetSeries(ctx context.Context, request GetSeriesRequestObject) (GetSeriesResponseObject, error)
 	// CreateTask Create a one-off task
 	// (POST /tasks)
 	CreateTask(ctx context.Context, request CreateTaskRequestObject) (CreateTaskResponseObject, error)
@@ -2195,10 +2478,11 @@ func (sh *strictHandler) ListInstances(w http.ResponseWriter, r *http.Request, p
 }
 
 // DeleteInstance operation middleware
-func (sh *strictHandler) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+func (sh *strictHandler) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams) {
 	var request DeleteInstanceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteInstance(ctx, request.(DeleteInstanceRequestObject))
@@ -2221,10 +2505,11 @@ func (sh *strictHandler) DeleteInstance(w http.ResponseWriter, r *http.Request, 
 }
 
 // UpdateInstance operation middleware
-func (sh *strictHandler) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+func (sh *strictHandler) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params UpdateInstanceParams) {
 	var request UpdateInstanceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateInstanceJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -2301,6 +2586,32 @@ func (sh *strictHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateMySettingsResponseObject); ok {
 		if err := validResponse.VisitUpdateMySettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSeries operation middleware
+func (sh *strictHandler) GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId) {
+	var request GetSeriesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSeries(ctx, request.(GetSeriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSeries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSeriesResponseObject); ok {
+		if err := validResponse.VisitGetSeriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

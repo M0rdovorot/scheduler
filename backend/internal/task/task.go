@@ -1,4 +1,5 @@
-// Package task manages the user's tasks in the calendar.
+// Package task manages the user's tasks in the calendar: one-off tasks and the
+// occurrences of regular (repeating) ones.
 package task
 
 import (
@@ -25,9 +26,38 @@ const (
 
 	// MaxRange is the longest window List accepts.
 	MaxRange = 100 * 24 * time.Hour
+
+	// Error codes of validation errors that clients react to.
+	CodeSeriesDateChange = "series_date_change"
+	CodeNoOccurrences    = "no_occurrences"
 )
 
-var ErrNotFound = errors.New("task not found")
+var (
+	ErrNotFound       = errors.New("task not found")
+	ErrSeriesNotFound = errors.New("series not found")
+)
+
+// Scope says what an edit or a delete of an occurrence applies to (FR-4.2).
+type Scope string
+
+const (
+	ScopeThis      Scope = "this"
+	ScopeFollowing Scope = "following"
+	ScopeAll       Scope = "all"
+)
+
+// ParseScope reads the scope; an empty string means ScopeThis.
+func ParseScope(s string) (Scope, bool) {
+	switch Scope(s) {
+	case "", ScopeThis:
+		return ScopeThis, true
+	case ScopeFollowing:
+		return ScopeFollowing, true
+	case ScopeAll:
+		return ScopeAll, true
+	}
+	return "", false
+}
 
 type Instance struct {
 	ID           uuid.UUID
@@ -37,6 +67,8 @@ type Instance struct {
 	PlannedEnd   time.Time
 	Status       string
 	CategoryIDs  []uuid.UUID
+	// SeriesID is set for occurrences of a regular task.
+	SeriesID *uuid.UUID
 }
 
 type CreateInput struct {
@@ -45,6 +77,9 @@ type CreateInput struct {
 	PlannedStart time.Time
 	PlannedEnd   time.Time
 	CategoryIDs  []uuid.UUID
+	// Recurrence is an RRULE; when set, a regular task is created whose first
+	// occurrence slot is PlannedStart–PlannedEnd.
+	Recurrence *string
 }
 
 // UpdateInput holds the fields to change; nil fields are left as is. A non-nil
@@ -55,6 +90,8 @@ type UpdateInput struct {
 	PlannedStart *time.Time
 	PlannedEnd   *time.Time
 	CategoryIDs  *[]uuid.UUID
+	// Recurrence replaces the repeat rule; only for ScopeFollowing and ScopeAll.
+	Recurrence *string
 }
 
 type Service struct {
@@ -65,13 +102,17 @@ func NewService(s *store.Store) *Service {
 	return &Service{store: s}
 }
 
-// List returns the tasks whose plan overlaps [from, to).
+// List returns the tasks whose plan overlaps [from, to). The occurrences of
+// regular tasks in the window are created first if they do not exist yet.
 func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]Instance, error) {
 	if !to.After(from) {
 		return nil, &validation.Error{Field: "to", Message: "must be after from"}
 	}
 	if to.Sub(from) > MaxRange {
 		return nil, &validation.Error{Field: "to", Message: "the range is too long (at most 100 days)"}
+	}
+	if err := s.Materialize(ctx, userID, from, to); err != nil {
+		return nil, err
 	}
 	rows, err := s.store.ListInstances(ctx, store.ListInstancesParams{UserID: userID, RangeFrom: from, RangeTo: to})
 	if err != nil {
@@ -103,6 +144,9 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 	if err != nil {
 		return Instance{}, err
 	}
+	if in.Recurrence != nil {
+		return s.createSeries(ctx, userID, title, in, categoryIDs)
+	}
 
 	var out Instance
 	err = s.store.InTx(ctx, func(q *store.Queries) error {
@@ -122,9 +166,16 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 	return out, err
 }
 
-func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, in UpdateInput) (Instance, error) {
-	var out Instance
+// Update edits an occurrence or a one-off task. For ScopeThis it returns the
+// updated task; for ScopeFollowing and ScopeAll the series is rewritten and nil
+// is returned, because the occurrences are re-created lazily.
+func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, scope Scope, in UpdateInput) (*Instance, error) {
+	var out *Instance
 	err := s.store.InTx(ctx, func(q *store.Queries) error {
+		// Series first, then the row: the same order everywhere, so edits cannot deadlock.
+		if err := q.LockSeriesChanges(ctx, userID.String()); err != nil {
+			return fmt.Errorf("lock series: %w", err)
+		}
 		cur, err := q.LockInstance(ctx, store.LockInstanceParams{ID: id, UserID: userID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
@@ -133,60 +184,103 @@ func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, in UpdateInp
 			return fmt.Errorf("lock instance: %w", err)
 		}
 
-		params := store.UpdateInstanceParams{
-			ID: id, UserID: userID, Title: cur.Title, Description: cur.Description,
-			PlannedStart: cur.PlannedStart, PlannedEnd: cur.PlannedEnd,
-		}
-		if in.Title != nil {
-			if params.Title, err = normalizeTitle(*in.Title); err != nil {
-				return err
+		if scope != ScopeThis {
+			if !cur.SeriesID.Valid {
+				return &validation.Error{Field: "scope", Message: "the task is not part of a series"}
 			}
+			return updateSeries(ctx, q, userID, cur, scope, in)
 		}
-		if in.Description != nil {
-			if err := validateDescription(*in.Description); err != nil {
-				return err
-			}
-			params.Description = *in.Description
+		if in.Recurrence != nil {
+			return &validation.Error{Field: "recurrence", Message: "the repeat rule can only be changed for the whole series or the following tasks"}
 		}
-		if in.PlannedStart != nil {
-			params.PlannedStart = *in.PlannedStart
-		}
-		if in.PlannedEnd != nil {
-			params.PlannedEnd = *in.PlannedEnd
-		}
-		if err := validateRange(params.PlannedStart, params.PlannedEnd); err != nil {
+		inst, err := updateInstance(ctx, q, userID, cur, in)
+		if err != nil {
 			return err
 		}
-		var categoryIDs []uuid.UUID
-		if in.CategoryIDs != nil {
-			if categoryIDs, err = normalizeCategoryIDs(*in.CategoryIDs); err != nil {
-				return err
-			}
-		}
-
-		if err := q.UpdateInstance(ctx, params); err != nil {
-			return fmt.Errorf("update instance: %w", err)
-		}
-		if in.CategoryIDs != nil {
-			if err := setCategories(ctx, q, userID, id, categoryIDs); err != nil {
-				return err
-			}
-		}
-		out, err = get(ctx, q, userID, id)
-		return err
+		out = &inst
+		return nil
 	})
 	return out, err
 }
 
-func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID) error {
-	n, err := s.store.DeleteInstance(ctx, store.DeleteInstanceParams{ID: id, UserID: userID})
-	if err != nil {
-		return fmt.Errorf("delete instance: %w", err)
+// updateInstance edits one row. An occurrence of a series becomes detached, so
+// that later edits of the whole series leave it alone.
+func updateInstance(ctx context.Context, q *store.Queries, userID uuid.UUID, cur store.TaskInstance, in UpdateInput) (Instance, error) {
+	params := store.UpdateInstanceParams{
+		ID: cur.ID, UserID: userID, Title: cur.Title, Description: cur.Description,
+		PlannedStart: cur.PlannedStart, PlannedEnd: cur.PlannedEnd, Detach: cur.SeriesID.Valid,
 	}
-	if n == 0 {
-		return ErrNotFound
+	var err error
+	if in.Title != nil {
+		if params.Title, err = normalizeTitle(*in.Title); err != nil {
+			return Instance{}, err
+		}
 	}
-	return nil
+	if in.Description != nil {
+		if err := validateDescription(*in.Description); err != nil {
+			return Instance{}, err
+		}
+		params.Description = *in.Description
+	}
+	if in.PlannedStart != nil {
+		params.PlannedStart = *in.PlannedStart
+	}
+	if in.PlannedEnd != nil {
+		params.PlannedEnd = *in.PlannedEnd
+	}
+	if err := validateRange(params.PlannedStart, params.PlannedEnd); err != nil {
+		return Instance{}, err
+	}
+	var categoryIDs []uuid.UUID
+	if in.CategoryIDs != nil {
+		if categoryIDs, err = normalizeCategoryIDs(*in.CategoryIDs); err != nil {
+			return Instance{}, err
+		}
+	}
+
+	if err := q.UpdateInstance(ctx, params); err != nil {
+		return Instance{}, fmt.Errorf("update instance: %w", err)
+	}
+	if in.CategoryIDs != nil {
+		if err := setCategories(ctx, q, userID, cur.ID, categoryIDs); err != nil {
+			return Instance{}, err
+		}
+	}
+	return get(ctx, q, userID, cur.ID)
+}
+
+// Delete removes an occurrence or a one-off task. Deleting one occurrence of a
+// series keeps its row as cancelled, so that it is not created again.
+func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, scope Scope) error {
+	return s.store.InTx(ctx, func(q *store.Queries) error {
+		if err := q.LockSeriesChanges(ctx, userID.String()); err != nil {
+			return fmt.Errorf("lock series: %w", err)
+		}
+		cur, err := q.LockInstance(ctx, store.LockInstanceParams{ID: id, UserID: userID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock instance: %w", err)
+		}
+
+		if !cur.SeriesID.Valid {
+			if scope != ScopeThis {
+				return &validation.Error{Field: "scope", Message: "the task is not part of a series"}
+			}
+			if _, err := q.DeleteInstance(ctx, store.DeleteInstanceParams{ID: id, UserID: userID}); err != nil {
+				return fmt.Errorf("delete instance: %w", err)
+			}
+			return nil
+		}
+		if scope == ScopeThis {
+			if err := q.CancelInstance(ctx, store.CancelInstanceParams{ID: id, UserID: userID}); err != nil {
+				return fmt.Errorf("cancel instance: %w", err)
+			}
+			return nil
+		}
+		return deleteSeries(ctx, q, userID, cur, scope)
+	})
 }
 
 func get(ctx context.Context, q *store.Queries, userID, id uuid.UUID) (Instance, error) {
@@ -206,20 +300,22 @@ func fromRow(r store.ListInstancesRow) Instance {
 	return Instance{
 		ID: r.ID, Title: r.Title, Description: r.Description, PlannedStart: r.PlannedStart,
 		PlannedEnd: r.PlannedEnd, Status: r.Status, CategoryIDs: r.CategoryIds,
+		SeriesID: nullUUIDPtr(r.SeriesID),
 	}
+}
+
+func nullUUIDPtr(id uuid.NullUUID) *uuid.UUID {
+	if !id.Valid {
+		return nil
+	}
+	return &id.UUID
 }
 
 // setCategories replaces the task's categories. Every id must be a category of
 // the user: ownership is also guaranteed by the composite foreign keys.
 func setCategories(ctx context.Context, q *store.Queries, userID, id uuid.UUID, categoryIDs []uuid.UUID) error {
-	if len(categoryIDs) > 0 {
-		n, err := q.CountUserCategories(ctx, store.CountUserCategoriesParams{UserID: userID, Ids: categoryIDs})
-		if err != nil {
-			return fmt.Errorf("count categories: %w", err)
-		}
-		if int(n) != len(categoryIDs) {
-			return &validation.Error{Field: "category_ids", Message: "unknown category"}
-		}
+	if err := checkCategories(ctx, q, userID, categoryIDs); err != nil {
+		return err
 	}
 	if err := q.ClearInstanceCategories(ctx, store.ClearInstanceCategoriesParams{InstanceID: id, UserID: userID}); err != nil {
 		return fmt.Errorf("clear categories: %w", err)
@@ -228,9 +324,28 @@ func setCategories(ctx context.Context, q *store.Queries, userID, id uuid.UUID, 
 		return nil
 	}
 	err := q.AddInstanceCategories(ctx, store.AddInstanceCategoriesParams{InstanceID: id, UserID: userID, CategoryIds: categoryIDs})
+	return categoryInsertError(err)
+}
+
+func checkCategories(ctx context.Context, q *store.Queries, userID uuid.UUID, categoryIDs []uuid.UUID) error {
+	if len(categoryIDs) == 0 {
+		return nil
+	}
+	n, err := q.CountUserCategories(ctx, store.CountUserCategoriesParams{UserID: userID, Ids: categoryIDs})
+	if err != nil {
+		return fmt.Errorf("count categories: %w", err)
+	}
+	if int(n) != len(categoryIDs) {
+		return &validation.Error{Field: "category_ids", Message: "unknown category"}
+	}
+	return nil
+}
+
+// categoryInsertError turns a foreign key violation (a category deleted between
+// the check and the insert) into a validation error.
+func categoryInsertError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-		// A category was deleted between the check above and the insert.
 		return &validation.Error{Field: "category_ids", Message: "unknown category"}
 	}
 	if err != nil {
