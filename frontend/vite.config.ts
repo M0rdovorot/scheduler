@@ -10,10 +10,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8081',
+      '/api': process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8081',
     },
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**'],
   },
 })

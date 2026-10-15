@@ -61,7 +61,9 @@ export function CalendarHeader({
           ›
         </button>
         <div className="relative min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold">{title}</h1>
+          <h1 className="truncate text-base font-semibold" title={title}>
+            {title}
+          </h1>
           {/* A transparent date input over the title: tapping it opens the native picker. */}
           <input
             type="date"

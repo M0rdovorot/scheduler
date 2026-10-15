@@ -119,7 +119,8 @@ describe('dayStart / dayRange', () => {
 describe('rangeLabel', () => {
   it('shows a single day or a range', () => {
     expect(rangeLabel(['2026-10-14'])).toMatch(/14\s+окт/)
-    expect(rangeLabel(['2026-10-12', '2026-10-18'])).toMatch(/12\s+окт.*18\s+окт/)
+    expect(rangeLabel(['2026-10-12', '2026-10-18'])).toMatch(/^12 – 18\s+окт/)
+    expect(rangeLabel(['2026-10-28', '2026-11-03'])).toMatch(/28\s+окт.*3\s+нояб/)
     expect(rangeLabel([])).toBe('')
   })
 

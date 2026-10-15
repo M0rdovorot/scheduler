@@ -40,12 +40,15 @@ docs/              требования, архитектура, план
 | `make gen` | `api/openapi.yaml` → Go (`oapi-codegen`) и TS (`openapi-typescript`); `queries/` + `migrations/` → Go (`sqlc`). Сгенерированные файлы коммитим |
 | `make lint` | golangci-lint, eslint, `tsc`, проверка prettier |
 | `make test` | поднимает dev-БД, затем `go test` (с `TEST_DATABASE_URL`) и Vitest |
+| `make e2e-setup` | один раз: ставит Chromium для Playwright (с зеркала npmmirror, на сервере CDN Playwright закрыт по региону) и системные библиотеки из .deb в `~/.local/share/chromium-libs` |
+| `make e2e` | тесты Playwright на изолированном стенде: своя БД `scheduler_e2e`, бэкенд `:8082`, Vite `:5174`; скриншоты в `frontend/e2e/screenshots/` |
 | `make build` | бинарник `bin/scheduler` и `frontend/dist` |
 | `make dev-db` | Postgres 18 на `127.0.0.1:5433` (`docker-compose.dev.yml`) |
 | `make dev` / `make dev-web` | бэкенд на `127.0.0.1:8081` (с `DEV_AUTH=true`) / Vite с прокси `/api` на бэкенд |
 
 Нюансы:
 
+- В e2e-тестах время зафиксировано (`page.clock.setFixedTime`, 12:00 по Москве 2026-10-14), пояс `Europe/Moscow`. Перед каждым тестом `resetData` стирает дела и категории пользователя `dev`, поэтому тесты идут в один поток.
 - Go-тесты с БД берут адрес из `TEST_DATABASE_URL`; без неё они пропускаются. Каждому тесту `testutil.NewDB` выдаёт отдельную схему и удаляет её по окончании.
 - Новая миграция — SQL-файл `backend/migrations/NNNNN_name.sql` с секциями `-- +goose Up` / `-- +goose Down`. CLI `goose` не нужен: миграции применяются из бинарника при старте. Пока миграций нет, `sqlc generate` пропускается.
 - Прокси Go (`proxy.golang.org`) на сервере отвечает 403 на часть модулей (например, `modernc.org/sqlite`). Из-за этого `go mod tidy` ругается на тесты зависимостей: запускай `go mod tidy -e`.

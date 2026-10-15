@@ -116,5 +116,8 @@ export function rangeLabel(days: readonly Day[], currentYear?: number): string {
     (Number(first.slice(0, 4)) !== currentYear || Number(last.slice(0, 4)) !== currentYear)
   const format = (day: Day) =>
     otherYear ? ruDayMonthYear.format(utcDate(day)) : dayMonthLabel(day)
-  return first === last ? format(first) : `${format(first)} – ${format(last)}`
+  if (first === last) return format(first)
+  // Within one month the month is named once: "13 – 15 окт." fits a phone header.
+  if (first.slice(0, 7) === last.slice(0, 7)) return `${Number(first.slice(8))} – ${format(last)}`
+  return `${format(first)} – ${format(last)}`
 }

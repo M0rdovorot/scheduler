@@ -10,7 +10,7 @@ GO_TOOLCHAIN         := go1.27.1
 
 DEV_DB_URL := postgres://scheduler:scheduler@127.0.0.1:5433/scheduler?sslmode=disable
 
-.PHONY: help install tools gen gen-api gen-sqlc gen-ts lint test build dev-db dev-db-down dev dev-web
+.PHONY: help install tools gen gen-api gen-sqlc gen-ts lint test e2e e2e-setup build dev-db dev-db-down dev dev-web
 
 help:
 	@echo "install    install frontend dependencies (npm ci)"
@@ -18,6 +18,8 @@ help:
 	@echo "gen        regenerate Go (oapi-codegen, sqlc) and TS code from api/openapi.yaml, migrations and queries"
 	@echo "lint       golangci-lint, eslint, tsc and prettier check"
 	@echo "test       backend (with dev Postgres) and frontend tests"
+	@echo "e2e-setup  one-time: install the browser for e2e tests (see frontend/e2e/setup.sh)"
+	@echo "e2e        Playwright tests against an isolated backend, database and Vite server"
 	@echo "build      build the backend binary into ./bin and the frontend into frontend/dist"
 	@echo "dev-db     start the dev Postgres on 127.0.0.1:5433"
 	@echo "dev        run the backend against the dev database"
@@ -51,6 +53,13 @@ lint:
 test: dev-db
 	cd backend && TEST_DATABASE_URL='$(DEV_DB_URL)' go test ./...
 	cd frontend && npm test --silent
+
+e2e: dev-db
+	cd backend && go build -o ../bin/scheduler ./cmd/scheduler
+	cd frontend && npm run --silent e2e
+
+e2e-setup:
+	frontend/e2e/setup.sh
 
 build:
 	cd backend && go build -o ../bin/scheduler ./cmd/scheduler

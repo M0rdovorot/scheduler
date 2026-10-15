@@ -4,6 +4,7 @@
       "Bash(make gen)",
       "Bash(make lint)",
       "Bash(make test)",
+      "Bash(make e2e)",
       "Bash(make build)",
       "Bash(make tools)"
     ]
