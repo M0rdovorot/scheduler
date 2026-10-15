@@ -53,6 +53,12 @@ export function draftStartingNow(now: Date, today: Day, slot: SlotMinutes, tz: s
   return draftForSelection(today, minutes, minutes + 60)
 }
 
+/** Catches typos such as year 2062 vs 2026 only at the extremes: 2000–2100 is accepted. */
+function plausibleYear(instant: Date, tz: string): boolean {
+  const year = Number(toLocalInput(instant, tz).slice(0, 4))
+  return year >= 2000 && year <= 2100
+}
+
 export function validateTaskDraft(draft: TaskDraft, tz: string): TaskDraftErrors {
   const errors: TaskDraftErrors = {}
   const title = [...draft.title.trim()].length
@@ -65,7 +71,9 @@ export function validateTaskDraft(draft: TaskDraft, tz: string): TaskDraftErrors
   const start = fromLocalInput(draft.start, tz)
   const end = fromLocalInput(draft.end, tz)
   if (!start) errors.start = 'Укажите дату и время начала'
+  else if (!plausibleYear(start, tz)) errors.start = 'Проверьте год'
   if (!end) errors.end = 'Укажите дату и время окончания'
+  else if (!plausibleYear(end, tz)) errors.end = 'Проверьте год'
   else if (start && end.getTime() <= start.getTime()) errors.end = 'Конец должен быть позже начала'
   return errors
 }

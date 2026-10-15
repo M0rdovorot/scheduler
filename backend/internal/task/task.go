@@ -79,10 +79,7 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time
 	}
 	out := make([]Instance, len(rows))
 	for i, r := range rows {
-		out[i] = Instance{
-			ID: r.ID, Title: r.Title, Description: r.Description, PlannedStart: r.PlannedStart,
-			PlannedEnd: r.PlannedEnd, Status: r.Status, CategoryIDs: r.CategoryIds,
-		}
+		out[i] = fromRow(r)
 	}
 	return out, nil
 }
@@ -200,10 +197,16 @@ func get(ctx context.Context, q *store.Queries, userID, id uuid.UUID) (Instance,
 	if err != nil {
 		return Instance{}, fmt.Errorf("get instance: %w", err)
 	}
+	return fromRow(store.ListInstancesRow(r)), nil
+}
+
+// fromRow is the only place that maps a query row to Instance. GetInstanceRow
+// has the same fields as ListInstancesRow, so it converts directly.
+func fromRow(r store.ListInstancesRow) Instance {
 	return Instance{
 		ID: r.ID, Title: r.Title, Description: r.Description, PlannedStart: r.PlannedStart,
 		PlannedEnd: r.PlannedEnd, Status: r.Status, CategoryIDs: r.CategoryIds,
-	}, nil
+	}
 }
 
 // setCategories replaces the task's categories. Every id must be a category of

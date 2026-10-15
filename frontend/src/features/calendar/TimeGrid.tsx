@@ -3,7 +3,7 @@ import type { Category, Instance, SlotMinutes } from '@/api/types'
 import { weekdayLabel, type Day } from './dates'
 import { DayColumn } from './DayColumn'
 import { dayHeightPx, pxPerMinute } from './grid'
-import { wallMinutes } from './segments'
+import { segmentOnDay, wallMinutes } from './segments'
 import type { SlotSelection } from './useSlotSelection'
 
 interface TimeGridProps {
@@ -53,9 +53,7 @@ export function TimeGrid({
       const start = new Date(instance.planned_start)
       const end = new Date(instance.planned_end)
       for (const day of days) {
-        const from = wallMinutes(start, day, tz)
-        const to = wallMinutes(end, day, tz)
-        if (to > 0 && from < 1440) map.get(day)?.push(instance)
+        if (segmentOnDay(start, end, day, tz)) map.get(day)?.push(instance)
       }
     }
     return map

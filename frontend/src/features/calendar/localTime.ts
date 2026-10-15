@@ -17,7 +17,8 @@ export function fromLocalInput(value: string, tz: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
   if (!match) return null
   const [y, mo, d, h, mi] = match.slice(1).map(Number) as [number, number, number, number, number]
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null
+  // Years below 1000 would be read as 19xx by Date; they are typos anyway.
+  if (y < 1000 || mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null
 
   // Reject dates like February 30th instead of silently rolling them over.
   const check = new Date(Date.UTC(y, mo - 1, d))

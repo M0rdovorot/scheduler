@@ -63,7 +63,9 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
   return (
     <div className="flex h-screen-safe flex-col">
       <CalendarHeader
-        title={rangeLabel(days)}
+        title={rangeLabel(days, Number(today.slice(0, 4)))}
+        pickedDay={anchor}
+        onPickDay={setAnchor}
         view={view}
         onViewChange={setView}
         onPrev={() => setAnchor(shiftAnchor(view, anchor, -1))}

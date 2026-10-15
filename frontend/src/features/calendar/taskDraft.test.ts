@@ -101,6 +101,19 @@ describe('validateTaskDraft', () => {
     expect(validateTaskDraft({ ...ok, end: '2026-10-14T09:59' }, tz).end).toBeDefined()
   })
 
+  it('rejects an implausible year (a mistyped date)', () => {
+    expect(
+      validateTaskDraft({ ...ok, start: '2062-10-14T10:00', end: '2062-10-14T11:00' }, tz),
+    ).toEqual({})
+    expect(
+      validateTaskDraft({ ...ok, start: '1999-12-31T10:00', end: '2000-01-01T00:00' }, tz).start,
+    ).toBeDefined()
+    expect(validateTaskDraft({ ...ok, end: '2101-01-01T00:00' }, tz).end).toBeDefined()
+    expect(
+      validateTaskDraft({ ...ok, start: '0026-10-14T10:00', end: '0026-10-14T11:00' }, tz).start,
+    ).toBeDefined()
+  })
+
   it('allows a task across midnight', () => {
     const night = { ...ok, start: '2026-10-14T22:00', end: '2026-10-15T06:00' }
     expect(validateTaskDraft(night, tz)).toEqual({})

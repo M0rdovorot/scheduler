@@ -80,6 +80,12 @@ const ruDayMonth = new Intl.DateTimeFormat('ru', {
   month: 'short',
   timeZone: 'UTC',
 })
+const ruDayMonthYear = new Intl.DateTimeFormat('ru', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+})
 const ruFull = new Intl.DateTimeFormat('ru', {
   weekday: 'short',
   day: 'numeric',
@@ -96,10 +102,19 @@ export const weekdayLabel = (day: Day) => ruWeekday.format(utcDate(day))
 export const dayMonthLabel = (day: Day) => ruDayMonth.format(utcDate(day))
 export const fullDayLabel = (day: Day) => ruFull.format(utcDate(day))
 
-/** Title for the visible range, e.g. "14 окт" or "13 окт – 19 окт". */
-export function rangeLabel(days: readonly Day[]): string {
+/**
+ * Title for the visible range, e.g. "14 окт" or "13 окт – 19 окт". The year is
+ * added when the range is not within `currentYear`, so that paging across a
+ * year boundary or to a distant date stays unambiguous.
+ */
+export function rangeLabel(days: readonly Day[], currentYear?: number): string {
   const first = days[0]
   const last = days[days.length - 1]
   if (!first || !last) return ''
-  return first === last ? dayMonthLabel(first) : `${dayMonthLabel(first)} – ${dayMonthLabel(last)}`
+  const otherYear =
+    currentYear !== undefined &&
+    (Number(first.slice(0, 4)) !== currentYear || Number(last.slice(0, 4)) !== currentYear)
+  const format = (day: Day) =>
+    otherYear ? ruDayMonthYear.format(utcDate(day)) : dayMonthLabel(day)
+  return first === last ? format(first) : `${format(first)} – ${format(last)}`
 }

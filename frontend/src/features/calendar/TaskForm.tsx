@@ -119,15 +119,22 @@ function TaskFormBody({
     <>
       <Dialog title={editing ? 'Дело' : 'Новое дело'} onClose={onClose}>
         <form onSubmit={onSubmit} className="space-y-4">
-          <label className="block">
-            <span>Название</span>
-            <input
-              className={fieldClass}
-              value={draft.title}
-              autoFocus
-              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            />
-          </label>
+          <div>
+            <label className="block">
+              <span>Название</span>
+              <input
+                className={fieldClass}
+                value={draft.title}
+                autoFocus
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              />
+            </label>
+            {errors.title && (
+              <span className={`block text-sm ${draft.title === '' ? 'text-hint' : 'text-danger'}`}>
+                {errors.title}
+              </span>
+            )}
+          </div>
 
           {compact ? (
             <div className="flex items-center justify-between gap-2">

@@ -78,6 +78,8 @@ export function useSlotSelection({ slot, columnRef, onFinish }: Options) {
     handlers: {
       onPointerDown(e: PointerEvent<HTMLElement>) {
         if (e.pointerType === 'mouse' && e.button !== 0) return
+        // A second finger belongs to a pinch or a scroll, not to a selection.
+        if (!e.isPrimary) return
         // Tasks handle their own taps.
         if ((e.target as Element).closest('[data-task]')) return
 
@@ -87,6 +89,7 @@ export function useSlotSelection({ slot, columnRef, onFinish }: Options) {
           begin(e.currentTarget, e.pointerId, first)
           return
         }
+        window.clearTimeout(g.timer)
         g.originX = e.clientX
         g.originY = e.clientY
         const target = e.currentTarget

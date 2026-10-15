@@ -122,4 +122,12 @@ describe('rangeLabel', () => {
     expect(rangeLabel(['2026-10-12', '2026-10-18'])).toMatch(/12\s+окт.*18\s+окт/)
     expect(rangeLabel([])).toBe('')
   })
+
+  it('adds the year only when the range is outside the current year', () => {
+    expect(rangeLabel(['2026-10-14'], 2026)).not.toMatch(/2026/)
+    expect(rangeLabel(['2027-01-05'], 2026)).toMatch(/2027/)
+    // A week across New Year: both ends get a year, so the end is not mistaken for this year.
+    expect(rangeLabel(['2026-12-28', '2027-01-03'], 2026)).toMatch(/2026.*2027/)
+    expect(rangeLabel(['2025-12-29', '2026-01-04'], 2026)).toMatch(/2025.*2026/)
+  })
 })

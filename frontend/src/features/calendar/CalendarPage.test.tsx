@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { json, net, noContent, type StubRequest } from '@/test/fetchStub'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -403,5 +403,72 @@ describe('calendar', () => {
     renderCalendar()
     expect((await screen.findByRole('alert')).textContent).toMatch(/Не удалось загрузить дела/)
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeTruthy()
+  })
+
+  it('jumps to a picked date, keeping the view', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('radio', { name: 'Неделя' }))
+
+    const picker = screen.getByLabelText('Выбрать дату') as HTMLInputElement
+    expect(picker.value).toBe('2026-10-14')
+    fireEvent.change(picker, { target: { value: '2027-02-10' } })
+
+    expect(column('2027-02-08')).toBeTruthy() // Monday of that week
+    expect(column('2027-02-14')).toBeTruthy()
+    expect(document.querySelectorAll('[data-day]')).toHaveLength(7)
+    // A date in another year shows the year in the title.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/2027/)
+    await vi.waitFor(() =>
+      expect(lastRange()).toEqual(['2027-02-07T21:00:00.000Z', '2027-02-14T21:00:00.000Z']),
+    )
+  })
+
+  it('ignores a cleared date', async () => {
+    renderCalendar()
+    const picker = (await screen.findByLabelText('Выбрать дату')) as HTMLInputElement
+    fireEvent.change(picker, { target: { value: '' } })
+    expect(column('2026-10-14')).toBeTruthy()
+  })
+
+  it('closes the menu on Escape and on a tap elsewhere', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    const menu = await screen.findByRole('button', { name: 'Меню' })
+
+    await ui.click(menu)
+    expect(screen.getByRole('link', { name: 'Настройки' })).toBeTruthy()
+    await ui.keyboard('{Escape}')
+    expect(screen.queryByRole('link', { name: 'Настройки' })).toBeNull()
+
+    await ui.click(menu)
+    expect(screen.getByRole('link', { name: 'Категории' })).toBeTruthy()
+    await ui.click(screen.getByRole('heading', { level: 1 }))
+    expect(screen.queryByRole('link', { name: 'Категории' })).toBeNull()
+  })
+
+  it('tells why the create button is disabled when the title is missing', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+    const form = within(await dialog())
+
+    expect(form.getByText('Введите название')).toBeTruthy()
+    await ui.type(form.getByLabelText('Название'), 'x')
+    expect(form.queryByText('Введите название')).toBeNull()
+  })
+
+  it('refuses a mistyped year', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+    const form = within(await dialog())
+
+    await ui.type(form.getByLabelText('Название'), 'x')
+    fireEvent.change(form.getByLabelText('Начало'), { target: { value: '0026-10-14T12:00' } })
+    // Browsers hand over "0026-…"; jsdom blanks such a value. Either way the form refuses it
+    // (the year check itself is covered in taskDraft.test.ts).
+    expect(form.getByText(/Проверьте год|Укажите дату и время начала/)).toBeTruthy()
+    expect((form.getByRole('button', { name: 'Создать' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

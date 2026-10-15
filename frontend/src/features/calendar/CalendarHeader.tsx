@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { ViewMode } from '@/api/types'
 
@@ -10,6 +10,9 @@ const views: readonly { value: ViewMode; label: string }[] = [
 
 interface CalendarHeaderProps {
   title: string
+  /** The date shown in the picker (the anchor of the visible range). */
+  pickedDay: string
+  onPickDay: (day: string) => void
   view: ViewMode
   onViewChange: (view: ViewMode) => void
   onPrev: () => void
@@ -19,6 +22,8 @@ interface CalendarHeaderProps {
 
 export function CalendarHeader({
   title,
+  pickedDay,
+  onPickDay,
   view,
   onViewChange,
   onPrev,
@@ -26,6 +31,24 @@ export function CalendarHeader({
   onToday,
 }: CalendarHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // The menu closes on a tap elsewhere and on Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
   const iconButton = 'size-9 rounded-xl bg-surface text-lg leading-none'
 
   return (
@@ -37,11 +60,21 @@ export function CalendarHeader({
         <button type="button" aria-label="Вперёд" className={iconButton} onClick={onNext}>
           ›
         </button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h1>
+        <div className="relative min-w-0 flex-1">
+          <h1 className="truncate text-lg font-semibold">{title}</h1>
+          {/* A transparent date input over the title: tapping it opens the native picker. */}
+          <input
+            type="date"
+            aria-label="Выбрать дату"
+            value={pickedDay}
+            onChange={(e) => e.target.value && onPickDay(e.target.value)}
+            className="absolute inset-0 size-full cursor-pointer opacity-0"
+          />
+        </div>
         <button type="button" className="rounded-xl bg-surface px-3 py-2 text-sm" onClick={onToday}>
           Сегодня
         </button>
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
             aria-label="Меню"
