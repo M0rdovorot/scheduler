@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react'
 import type { Category, Instance, SlotMinutes } from '@/api/types'
 import { isUnmarked } from '@/features/tracking/fact'
 import { blocksForDay, type ShowMode } from './blocks'
-import { noCategoryColor, primaryCategory } from './categoryColor'
+import { instanceColor } from './categoryColor'
 import type { Day } from './dates'
 import { EventBlock } from './EventBlock'
 import { dayHeightPx, formatMinutes, minBlockMinutes, pxPerMinute, slotBackground } from './grid'
@@ -18,6 +18,7 @@ interface DayColumnProps {
   now: Date
   instances: readonly Instance[]
   categoriesById: ReadonlyMap<string, Category>
+  habitColors: ReadonlyMap<string, string>
   /** Minutes from midnight of this day for the "now" line; null on other days. */
   nowMin: number | null
   /** Narrow column: see EventBlock. */
@@ -37,6 +38,7 @@ export function DayColumn({
   now,
   instances,
   categoriesById,
+  habitColors,
   nowMin,
   dense,
   onSelect,
@@ -76,8 +78,7 @@ export function DayColumn({
     >
       {placed.map(({ block, visualEnd, place }) => {
         const { instance, stripe } = block
-        const color =
-          primaryCategory(instance.category_ids, categoriesById)?.color ?? noCategoryColor
+        const color = instanceColor(instance, categoriesById, habitColors)
         const left = `calc(${(place.column / place.columns) * 100}% + 1px)`
         return (
           <div key={`${block.kind}-${block.key}`}>

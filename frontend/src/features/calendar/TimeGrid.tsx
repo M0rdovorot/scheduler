@@ -16,6 +16,7 @@ interface TimeGridProps {
   mode: ShowMode
   instances: readonly Instance[]
   categoriesById: ReadonlyMap<string, Category>
+  habitColors: ReadonlyMap<string, string>
   onSelect: (day: Day, selection: SlotSelection) => void
   onOpen: (instance: Instance) => void
   onOpenDay: (day: Day) => void
@@ -32,6 +33,7 @@ export function TimeGrid({
   mode,
   instances,
   categoriesById,
+  habitColors,
   onSelect,
   onOpen,
   onOpenDay,
@@ -101,6 +103,7 @@ export function TimeGrid({
               now={now}
               instances={byDay.get(day) ?? []}
               categoriesById={categoriesById}
+              habitColors={habitColors}
               nowMin={day === today ? nowMin : null}
               dense={days.length > 3}
               onSelect={onSelect}

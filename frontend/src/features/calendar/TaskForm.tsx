@@ -217,7 +217,9 @@ function TaskFormBody({
   ]
 
   const readOnly = editing?.status === 'rescheduled'
-  const showRepeat = !compact && (!editing || inSeries)
+  const inHabit = editing?.habit_id != null
+  // The schedule of a habit is set in the habit, so the rule of its occurrences is not edited here.
+  const showRepeat = !compact && (!editing || (inSeries && !inHabit))
 
   // A task with a status other than planned carries a fact; deleting it drops the fact too.
   const marked = editing !== undefined && editing.status !== 'planned'
@@ -327,7 +329,12 @@ function TaskFormBody({
                     onChange={(repeat) => setDraft({ ...draft, repeat })}
                   />
                 )}
-                {inSeries && ruleUnsupported && series && (
+                {inHabit && (
+                  <p className="text-sm text-hint">
+                    Это привычка: расписание меняется на экране «Привычки».
+                  </p>
+                )}
+                {inSeries && !inHabit && ruleUnsupported && series && (
                   <p className="text-sm text-hint">Правило повтора: {series.rrule}</p>
                 )}
                 {inSeries && !ruleUnsupported && savedRepeat && !showRepeat && (

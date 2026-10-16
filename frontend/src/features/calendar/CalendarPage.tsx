@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useCategories } from '@/api/categories'
+import { useHabits } from '@/api/habits'
 import { useInstances, useRunningInstances } from '@/api/instances'
 import { useMe } from '@/api/me'
 import { useNow } from '@/lib/useNow'
@@ -55,6 +56,12 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
     [categories.data],
   )
 
+  const habits = useHabits()
+  const habitColors = useMemo(
+    () => new Map<string, string>((habits.data ?? []).map((h) => [h.id, h.color])),
+    [habits.data],
+  )
+
   const closeForm = useCallback(() => setTarget(null), [])
 
   const openSelection = (day: Day, range: SlotSelection) =>
@@ -99,6 +106,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         mode={mode}
         instances={instances.data ?? []}
         categoriesById={categoriesById}
+        habitColors={habitColors}
         onSelect={openSelection}
         onOpen={(instance) => setTarget({ mode: 'edit', id: instance.id })}
         onOpenDay={(day) => {

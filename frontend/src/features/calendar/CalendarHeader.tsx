@@ -122,6 +122,9 @@ export function CalendarHeader({
               >
                 Дело вне плана
               </button>
+              <Link to="/habits" className="block rounded-lg px-3 py-2 hover:bg-surface">
+                Привычки
+              </Link>
               <Link to="/stats" className="block rounded-lg px-3 py-2 hover:bg-surface">
                 Статистика
               </Link>

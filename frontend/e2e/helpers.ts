@@ -10,6 +10,7 @@ export interface Api {
   token: string
   post: (path: string, data: unknown) => Promise<unknown>
   patch: (path: string, data: unknown) => Promise<unknown>
+  put: (path: string, data: unknown) => Promise<unknown>
   get: (path: string) => Promise<unknown>
   del: (path: string) => Promise<void>
 }
@@ -28,6 +29,7 @@ export async function apiLogin(request: APIRequestContext): Promise<Api> {
     token,
     post: async (path, data) => checked(await request.post(`/api/v1${path}`, { headers, data })),
     patch: async (path, data) => checked(await request.patch(`/api/v1${path}`, { headers, data })),
+    put: async (path, data) => checked(await request.put(`/api/v1${path}`, { headers, data })),
     get: async (path) => checked(await request.get(`/api/v1${path}`, { headers })),
     del: async (path) => void (await checked(await request.delete(`/api/v1${path}`, { headers }))),
   }
@@ -43,6 +45,8 @@ export async function resetData(api: Api) {
     const tasks = (await api.get(`/instances?from=${from}&to=${to}`)) as { id: string }[]
     for (const t of tasks) await api.del(`/instances/${t.id}`)
   }
+  const habits = (await api.get('/habits')) as { id: string }[]
+  for (const h of habits) await api.del(`/habits/${h.id}`)
   const categories = (await api.get('/categories')) as { id: string; parent_id: string | null }[]
   for (const c of categories.filter((c) => c.parent_id === null))
     await api.del(`/categories/${c.id}`)

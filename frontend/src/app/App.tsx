@@ -1,6 +1,8 @@
 import { Route, Routes } from 'react-router'
 import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { CalendarPage } from '@/features/calendar/CalendarPage'
+import { HabitPage } from '@/features/habits/HabitPage'
+import { HabitsPage } from '@/features/habits/HabitsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { StatsPage } from '@/features/stats/StatsPage'
 import { TimersPage } from '@/features/tracking/TimersPage'
@@ -15,6 +17,8 @@ export function App() {
           <Route index element={<CalendarPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="stats" element={<StatsPage />} />
+          <Route path="habits" element={<HabitsPage />} />
+          <Route path="habits/:id" element={<HabitPage />} />
           <Route path="timers" element={<TimersPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
