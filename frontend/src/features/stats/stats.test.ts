@@ -345,8 +345,12 @@ describe('buildChart', () => {
     const { columns } = buildChart(days, cats, labels)
     expect(columns.length).toBeLessThan(15)
     expect(columns.reduce((s, c) => s + c.total, 0)).toBe(70 * 30)
-    expect(columns[0]!.date).toBe('2025-12-29') // the Monday of the first week
+    // The first week starts on the first day of the period, not on the Monday before it,
+    // and the last one ends with the period.
+    expect(columns[0]!.date).toBe('2026-01-01')
+    expect(columns[1]!.date).toBe('2026-01-05')
     expect(columns[1]!.endDate).toBe('2026-01-11')
+    expect(columns.at(-1)!.endDate).toBe('2026-03-11')
   })
 })
 

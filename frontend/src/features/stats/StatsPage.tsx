@@ -6,7 +6,7 @@ import { useMe } from '@/api/me'
 import type { Instance, StatsReport } from '@/api/types'
 import { todayIn } from '@/features/calendar/dates'
 import { formatTime } from '@/features/calendar/localTime'
-import { deviationText, statusLabels } from '@/features/tracking/fact'
+import { deviationText, maxTimerHours, statusLabels } from '@/features/tracking/fact'
 import { ChartLegend, ChartTable, DailyChart } from './DailyChart'
 import { buildChart } from './chartData'
 import { formatDuration } from './format'
@@ -48,12 +48,15 @@ export function StatsPage() {
 
   function pickKind(kind: PeriodKind) {
     if (kind === period.kind) return
-    // Keep the date in view: the anchor stays, a custom range starts as the current period.
-    setPeriod(
-      kind === 'custom'
-        ? { ...period, kind, customFrom: days.first, customTo: days.last }
-        : { ...period, kind },
-    )
+    // Keep the dates in view: a custom range starts as the current period, and leaving
+    // it continues from the range the user was looking at.
+    if (kind === 'custom') {
+      setPeriod({ ...period, kind, customFrom: days.first, customTo: days.last })
+    } else if (period.kind === 'custom' && error === null) {
+      setPeriod({ ...period, kind, anchor: period.customFrom })
+    } else {
+      setPeriod({ ...period, kind })
+    }
   }
 
   const stale = stats.isPlaceholderData
@@ -203,7 +206,7 @@ function Report({
       {report.long_running_timers > 0 && (
         <p className="mt-3 rounded-xl bg-surface p-3 text-sm" data-testid="long-timers">
           Запущено слишком давно: таймеров — {report.long_running_timers}. В статистику идут только
-          первые 12 часов каждого.{' '}
+          первые {maxTimerHours} ч каждого.{' '}
           <Link to="/timers" className="text-link">
             К таймерам
           </Link>

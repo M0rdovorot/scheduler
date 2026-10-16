@@ -20,11 +20,10 @@ type Service struct {
 	tasks      *task.Service
 	categories *category.Service
 	users      *user.Service
-	now        func() time.Time
 }
 
 func NewService(tasks *task.Service, categories *category.Service, users *user.Service) *Service {
-	return &Service{tasks: tasks, categories: categories, users: users, now: time.Now}
+	return &Service{tasks: tasks, categories: categories, users: users}
 }
 
 // Report builds the statistics of [from, to) for the user. The occurrences of regular
@@ -54,5 +53,5 @@ func (s *Service) Report(ctx context.Context, userID uuid.UUID, from, to time.Ti
 	if err != nil {
 		return Report{}, err
 	}
-	return Compute(Input{Instances: instances, Categories: cats, From: from, To: to, Now: s.now(), Loc: loc}), nil
+	return Compute(Input{Instances: instances, Categories: cats, From: from, To: to, Now: s.tasks.Now(), Loc: loc}), nil
 }

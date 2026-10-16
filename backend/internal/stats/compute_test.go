@@ -435,3 +435,14 @@ func TestUnionSeconds(t *testing.T) {
 		}
 	}
 }
+
+func TestParallelUnplannedTasksAreNotCountedTwice(t *testing.T) {
+	r := compute(
+		unplanned(at(14, 10, 0), at(14, 11, 0)),
+		unplanned(at(14, 10, 0), at(14, 11, 0)),
+	)
+	// Out-of-plan time is a part of the fact, so it can never exceed it.
+	if r.ActualMinutes != 60 || r.UnplannedMinutes != 60 || r.UnplannedCount != 2 {
+		t.Errorf("actual = %d, unplanned = %d (%d tasks)", r.ActualMinutes, r.UnplannedMinutes, r.UnplannedCount)
+	}
+}

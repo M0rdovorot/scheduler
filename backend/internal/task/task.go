@@ -125,6 +125,9 @@ func NewService(s *store.Store) *Service {
 // SetClock replaces the clock of the service; tests use it to fix the time.
 func (s *Service) SetClock(now func() time.Time) { s.now = now }
 
+// Now is the current time of the service, so that other services reading the same data use the same instant.
+func (s *Service) Now() time.Time { return s.now() }
+
 // List returns the tasks whose plan or fact overlaps [from, to). The occurrences of
 // regular tasks in the window are created first if they do not exist yet.
 func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]Instance, error) {

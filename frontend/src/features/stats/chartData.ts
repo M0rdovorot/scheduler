@@ -77,6 +77,9 @@ export function buildChart(
   const byId = new Map(categories.map((c) => [c.id, c]))
   const grouped = days.length > maxDayColumns
   const source = grouped ? groupByWeek(days) : days
+  // A week at the edge of the period is shown only as far as the period goes.
+  const firstDate = days[0]?.date
+  const lastDate = days[days.length - 1]?.date
 
   const totals = new Map<string, number>()
   for (const day of source) {
@@ -140,8 +143,8 @@ export function buildChart(
       .map(([seriesId, minutes]) => ({ seriesId, minutes }))
       .sort((a, b) => (order.get(a.seriesId) ?? 99) - (order.get(b.seriesId) ?? 99))
     return {
-      date: day.date,
-      endDate: grouped ? addDays(day.date, 6) : undefined,
+      date: grouped && firstDate && day.date < firstDate ? firstDate : day.date,
+      endDate: grouped ? clampTo(addDays(day.date, 6), lastDate) : undefined,
       total: list.reduce((sum, s) => sum + s.minutes, 0),
       busy: day.minutes,
       segments: list,
@@ -149,6 +152,8 @@ export function buildChart(
   })
   return { columns, series }
 }
+
+const clampTo = (day: Day, last: Day | undefined) => (last && day > last ? last : day)
 
 const steps = [15, 30, 60, 120, 180, 240, 360, 480, 720, 1440, 2880, 5760]
 

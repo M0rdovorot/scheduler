@@ -15,8 +15,6 @@ const maxLabeledColumns = 7
 interface DailyChartProps {
   columns: readonly Column[]
   series: readonly Series[]
-  /** The chart is showing the previous period while the new one loads. */
-  stale?: boolean
 }
 
 /** A column's date as a short caption: "14 окт." or "12 – 18 окт." for a week. */
@@ -35,7 +33,7 @@ function topRounded(x: number, y: number, w: number, h: number, r: number): stri
  * Stacked columns of the hours per day (or per week for a long period), one segment per
  * category. Hover or focus a column for its numbers; the same numbers are in the table.
  */
-export function DailyChart({ columns, series, stale }: DailyChartProps) {
+export function DailyChart({ columns, series }: DailyChartProps) {
   const [active, setActive] = useState<number | null>(null)
   const seriesById = new Map(series.map((s) => [s.id, s]))
 
@@ -53,7 +51,7 @@ export function DailyChart({ columns, series, stale }: DailyChartProps) {
   const activeX = active === null ? 0 : margin.left + slot * active + slot / 2
 
   return (
-    <div className={`relative ${stale ? 'opacity-60' : ''}`} data-testid="daily-chart">
+    <div className="relative" data-testid="daily-chart">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full"

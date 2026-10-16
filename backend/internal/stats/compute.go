@@ -247,7 +247,8 @@ func Compute(in Input) Report {
 
 	var factAll, planAll []interval
 	categorySeconds := map[uuid.UUID]float64{}
-	var uncategorizedSeconds, unplannedSeconds float64
+	var uncategorizedSeconds float64
+	var unplannedAll []interval
 	taskSeconds := map[string]*struct {
 		count   int
 		seconds float64
@@ -292,7 +293,7 @@ func Compute(in Input) Report {
 				group.seconds += secs
 
 				if inst.PlannedStart == nil {
-					unplannedSeconds += secs
+					unplannedAll = append(unplannedAll, f)
 					rep.UnplannedCount++
 				}
 
@@ -314,7 +315,7 @@ func Compute(in Input) Report {
 
 	rep.ActualMinutes = minutes(unionSeconds(factAll))
 	rep.PlannedMinutes = minutes(unionSeconds(planAll))
-	rep.UnplannedMinutes = minutes(unplannedSeconds)
+	rep.UnplannedMinutes = minutes(unionSeconds(unplannedAll))
 	rep.UncategorizedMinutes = minutes(uncategorizedSeconds)
 
 	for id, secs := range categorySeconds {

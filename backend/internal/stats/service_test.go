@@ -46,7 +46,6 @@ func newEnv(t *testing.T) *env {
 	users, cats, tasks := user.NewService(st), category.NewService(st), task.NewService(st)
 	e := &env{t: t, stats: stats.NewService(tasks, cats, users), tasks: tasks, cats: cats, user: mk("a"), other: mk("b")}
 	clock := func() time.Time { return at(14, 12, 0) }
-	e.stats.SetClock(clock)
 	tasks.SetClock(clock)
 	return e
 }
@@ -185,7 +184,7 @@ func TestRunningTimerInTheReport(t *testing.T) {
 
 	// Ten hours later the timer is still running: the cap of 12 hours has not been reached yet,
 	// two days later it has.
-	e.stats.SetClock(func() time.Time { return at(16, 12, 0) })
+	e.tasks.SetClock(func() time.Time { return at(16, 12, 0) })
 	r := e.report(at(14, 0, 0), at(17, 0, 0))
 	if r.ActualMinutes != 12*60 || r.LongRunning != 1 {
 		t.Errorf("actual = %d, long running = %d, want 720 and 1", r.ActualMinutes, r.LongRunning)

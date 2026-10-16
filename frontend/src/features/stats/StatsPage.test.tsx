@@ -232,6 +232,21 @@ describe('StatsPage', () => {
     }
   })
 
+  it('keeps the dates in view when leaving a custom period', async () => {
+    const user = userEvent.setup()
+    renderStats()
+    await screen.findByTestId('actual-total')
+    await user.click(screen.getByRole('tab', { name: 'Период' }))
+    const from = screen.getByLabelText('С')
+    await user.clear(from)
+    await user.type(from, '2026-03-04')
+    const to = screen.getByLabelText('По')
+    await user.clear(to)
+    await user.type(to, '2026-03-20')
+    await user.click(screen.getByRole('tab', { name: 'Месяц' }))
+    expect((await screen.findByTestId('period-label')).textContent).toMatch(/март\s+2026/)
+  })
+
   it('draws the chart with a legend and shows numbers on hover and in a table', async () => {
     const user = userEvent.setup()
     renderStats()
