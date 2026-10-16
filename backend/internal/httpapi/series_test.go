@@ -68,12 +68,9 @@ func TestSeriesFlow(t *testing.T) {
 		titles[in["planned_start"].(string)] = in["title"].(string)
 	}
 	// The time of the series moved from 09:00 to 12:00. The detached occurrence keeps its own
-	// slot (06:00 UTC) and, because the keys of occurrences are their original times, the
-	// new template also produces its Monday occurrence (09:00 UTC): the same trade-off as
-	// for deleted occurrences when the time of a series changes.
+	// time (06:00 UTC) and its slot: the template does not create a second one that day.
 	wantTitles := map[string]string{
-		"2026-10-14T09:00:00Z": "Общая", "2026-10-19T06:00:00Z": "Особая",
-		"2026-10-19T09:00:00Z": "Общая", "2026-10-21T09:00:00Z": "Общая",
+		"2026-10-14T09:00:00Z": "Общая", "2026-10-19T06:00:00Z": "Особая", "2026-10-21T09:00:00Z": "Общая",
 	}
 	if fmt.Sprint(titles) != fmt.Sprint(wantTitles) {
 		t.Errorf("titles = %v, want %v", titles, wantTitles)

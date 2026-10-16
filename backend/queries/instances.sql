@@ -20,8 +20,9 @@ WHERE ti.id = @id AND ti.user_id = @user_id
 GROUP BY ti.id;
 
 -- name: LockInstance :one
+-- Cancelled instances are deleted occurrences: not found for edits and deletes.
 SELECT * FROM task_instances
-WHERE id = $1 AND user_id = $2
+WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'
 FOR UPDATE;
 
 -- name: CreateInstance :one

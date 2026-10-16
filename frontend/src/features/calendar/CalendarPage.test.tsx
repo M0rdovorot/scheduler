@@ -627,6 +627,21 @@ describe('calendar', () => {
       ).toBe(false)
     })
 
+    it('refuses to change the date and the rule together, saying why', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      await ui.selectOptions(await form.findByLabelText('Повтор'), 'daily')
+      fireEvent.change(form.getByLabelText('Конец'), { target: { value: '2026-10-15T10:00' } })
+      fireEvent.change(form.getByLabelText('Начало'), { target: { value: '2026-10-15T09:00' } })
+
+      expect(form.getByText(/Нельзя менять дату и правило повтора одновременно/)).toBeTruthy()
+      expect((form.getByRole('button', { name: 'Сохранить' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      )
+    })
+
     it('shows the server explanation when a series edit is refused', async () => {
       const ui = userEvent.setup()
       renderCalendar()

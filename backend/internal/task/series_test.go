@@ -741,3 +741,255 @@ func TestScopeParsing(t *testing.T) {
 		}
 	}
 }
+
+// setStatus marks a row as the tracking of stage 5 will (done, partial, …).
+func (e *env) setStatus(id uuid.UUID, status string) {
+	e.t.Helper()
+	if _, err := e.pool.Exec(context.Background(), `UPDATE task_instances SET status = $1 WHERE id = $2`, status, id); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestSplitHandsTheTailOverSoNothingComesBackOrDoubles(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 24, 0, 0)
+	list := e.list(from, to) // 14..23
+
+	// After the cut (the 18th): the 20th is deleted, the 21st is edited on its own, the 22nd is done.
+	if err := e.svc.Delete(ctx, e.user, list[6].ID, task.ScopeThis); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Update(ctx, e.user, list[7].ID, task.ScopeThis, task.UpdateInput{Title: ptr("Особая")}); err != nil {
+		t.Fatal(err)
+	}
+	e.setStatus(list[8].ID, "done")
+
+	if _, err := e.svc.Update(ctx, e.user, list[4].ID, task.ScopeFollowing, task.UpdateInput{Title: ptr("Новая")}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := e.list(from, to)
+	if len(got) != 9 { // 10 days, one of them deleted
+		t.Fatalf("%d tasks, want 9: %v", len(got), days(got, "Europe/Moscow"))
+	}
+	byDay := map[string]string{}
+	for _, in := range got {
+		byDay[in.PlannedStart.In(time.UTC).Format("02")] = in.Title + "/" + in.Status
+	}
+	for day, want := range map[string]string{
+		"17": "Планёрка/planned", "18": "Новая/planned", "19": "Новая/planned",
+		"21": "Особая/planned", "22": "Планёрка/done", "23": "Новая/planned",
+	} {
+		if byDay[day] != want {
+			t.Errorf("day %s: %q, want %q (all: %v)", day, byDay[day], want, byDay)
+		}
+	}
+	if _, deleted := byDay["20"]; deleted {
+		t.Error("the deleted occurrence of the 20th came back")
+	}
+}
+
+func TestChangingTheTimeOfASeriesKeepsDeletedEditedAndMarkedDays(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 20, 0, 0)
+	list := e.list(from, to) // 14..19
+
+	if err := e.svc.Delete(ctx, e.user, list[1].ID, task.ScopeThis); err != nil { // the 15th: deleted
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Update(ctx, e.user, list[2].ID, task.ScopeThis, task.UpdateInput{Title: ptr("Особая")}); err != nil { // the 16th: edited
+		t.Fatal(err)
+	}
+	e.setStatus(list[3].ID, "done") // the 17th: done
+
+	start := msk(t, 2026, 10, 14, 11, 30)
+	if _, err := e.svc.Update(ctx, e.user, list[0].ID, task.ScopeAll, task.UpdateInput{
+		PlannedStart: &start, PlannedEnd: ptr(start.Add(time.Hour)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := e.list(from, to)
+	byDay := map[string][]string{}
+	for _, in := range got {
+		day := in.PlannedStart.In(time.UTC).Format("02")
+		byDay[day] = append(byDay[day], fmt.Sprintf("%s/%s/%s", in.Title, in.Status, in.PlannedStart.In(time.UTC).Format("15:04")))
+	}
+	want := map[string][]string{
+		"14": {"Планёрка/planned/08:30"}, // re-created at 11:30 Moscow
+		"16": {"Особая/planned/06:00"},   // edited: stays as it is, no second one
+		"17": {"Планёрка/done/06:00"},    // done: history, no second one
+		"18": {"Планёрка/planned/08:30"}, "19": {"Планёрка/planned/08:30"},
+	}
+	if fmt.Sprint(byDay) != fmt.Sprint(want) {
+		t.Errorf("got  %v\nwant %v", byDay, want)
+	}
+	if _, back := byDay["15"]; back {
+		t.Error("the deleted occurrence of the 15th came back")
+	}
+}
+
+func TestChangingTheTimeWhenSplittingKeepsTheTailToo(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 22, 0, 0)
+	list := e.list(from, to) // 14..21
+
+	if err := e.svc.Delete(ctx, e.user, list[5].ID, task.ScopeThis); err != nil { // the 19th
+		t.Fatal(err)
+	}
+	e.setStatus(list[6].ID, "done") // the 20th
+
+	start := msk(t, 2026, 10, 17, 18, 0)
+	if _, err := e.svc.Update(ctx, e.user, list[3].ID, task.ScopeFollowing, task.UpdateInput{
+		PlannedStart: &start, PlannedEnd: ptr(start.Add(time.Hour)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := e.list(from, to)
+	equal(t, days(got, "Europe/Moscow"), []string{
+		"Wed 10-14 09:00", "Thu 10-15 09:00", "Fri 10-16 09:00",
+		"Sat 10-17 18:00", "Sun 10-18 18:00", "Tue 10-20 09:00", "Wed 10-21 18:00",
+	})
+	// The done occurrence of the 20th keeps its time (history); the 19th stays deleted.
+	for _, in := range got {
+		if in.PlannedStart.In(time.UTC).Format("02") == "20" && in.Status != "done" {
+			t.Errorf("the 20th is %q, want the done one", in.Status)
+		}
+	}
+}
+
+func TestEditingOnlyTheEndKeepsTheTimeOfDayOfTheSeries(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 18, 0, 0)
+	list := e.list(from, to)
+
+	// The 15th was moved on its own to 15:00 (so it is detached); now only its end is edited, for all.
+	moved := msk(t, 2026, 10, 15, 15, 0)
+	if _, err := e.svc.Update(ctx, e.user, list[1].ID, task.ScopeThis, task.UpdateInput{PlannedStart: &moved, PlannedEnd: ptr(moved.Add(time.Hour))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Update(ctx, e.user, list[1].ID, task.ScopeAll, task.UpdateInput{PlannedEnd: ptr(msk(t, 2026, 10, 15, 16, 30))}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := e.list(from, to)
+	// The series is still at 09:00 (the moved occurrence is not what defines it); its duration became 1.5 h.
+	var times []string
+	for _, in := range got {
+		// The moved (detached) occurrence on the 15th keeps its own time and length.
+		if in.Title == "Планёрка" && in.PlannedStart.In(time.UTC).Day() != 15 {
+			times = append(times, in.PlannedStart.In(time.UTC).Format("15:04"))
+			if in.PlannedEnd.Sub(in.PlannedStart) != 90*time.Minute {
+				t.Errorf("duration = %v, want 1h30m", in.PlannedEnd.Sub(in.PlannedStart))
+			}
+		}
+	}
+	equal(t, times, []string{"06:00", "06:00", "06:00"})
+}
+
+func TestAMarkedOccurrenceCannotBeDeletedFromItsSeries(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	list := e.list(msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 16, 0, 0))
+	e.setStatus(list[0].ID, "done")
+
+	err := e.svc.Delete(ctx, e.user, list[0].ID, task.ScopeThis)
+	var verr *validation.Error
+	if !errors.As(err, &verr) || verr.ErrorCode() != task.CodeInstanceMarked {
+		t.Fatalf("err = %v, want %s", err, task.CodeInstanceMarked)
+	}
+	if n := e.rowCount("status = 'done'"); n != 1 {
+		t.Errorf("%d done rows, want the record kept", n)
+	}
+}
+
+func TestDeletedOccurrencesAreGoneForEdits(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	list := e.list(msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 18, 0, 0))
+	if err := e.svc.Delete(ctx, e.user, list[2].ID, task.ScopeThis); err != nil {
+		t.Fatal(err)
+	}
+
+	// A stale id of a deleted occurrence is not found, whatever is asked of it.
+	for _, scope := range []task.Scope{task.ScopeThis, task.ScopeFollowing, task.ScopeAll} {
+		if _, err := e.svc.Update(ctx, e.user, list[2].ID, scope, task.UpdateInput{Title: ptr("x")}); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("Update scope %s: %v", scope, err)
+		}
+		if err := e.svc.Delete(ctx, e.user, list[2].ID, scope); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("Delete scope %s: %v", scope, err)
+		}
+	}
+	var seriesCount int
+	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM task_series`).Scan(&seriesCount); err != nil || seriesCount != 1 {
+		t.Errorf("series = %d, %v; a stale id must not split the series", seriesCount, err)
+	}
+}
+
+func TestDeletingASeriesOrItsTailLeavesNoCancelledRows(t *testing.T) {
+	e := newSeriesEnv(t)
+	ctx := context.Background()
+	e.createSeries("FREQ=DAILY")
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 24, 0, 0)
+	list := e.list(from, to)
+	for _, i := range []int{1, 6, 8} { // the 15th, the 20th and the 22nd are deleted
+		if err := e.svc.Delete(ctx, e.user, list[i].ID, task.ScopeThis); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := e.svc.Delete(ctx, e.user, list[4].ID, task.ScopeFollowing); err != nil { // from the 18th
+		t.Fatal(err)
+	}
+	// The cancelled rows of the tail went with it; the one before the cut stays: it keeps the 15th deleted.
+	if n := e.rowCount("status = 'cancelled'"); n != 1 {
+		t.Errorf("%d cancelled rows after deleting the tail, want 1", n)
+	}
+
+	if err := e.svc.Delete(ctx, e.user, list[0].ID, task.ScopeAll); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.rowCount("true"); n != 0 {
+		t.Errorf("%d rows left after deleting the whole series", n)
+	}
+}
+
+func TestMaterialisationDoesNotBlockOnEachOther(t *testing.T) {
+	e := newSeriesEnv(t)
+	e.createSeries("FREQ=DAILY")
+
+	// Hold the shared lock in one transaction; another materialisation must still go through.
+	ctx := context.Background()
+	tx, err := e.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtextextended('series:' || $1::text, 0))`, e.user); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.svc.List(ctx, e.user, msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 20, 0, 0))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a list waited for another reader's lock")
+	}
+}

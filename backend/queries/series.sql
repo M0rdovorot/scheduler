@@ -46,11 +46,13 @@ WHERE sc.series_id = @series_id AND sc.user_id = @user_id;
 -- name: DeleteSeriesInstances :execrows
 -- Removes instances of a series that an edit or a delete of the series may remove:
 -- planned ones, from `from_start` on (all of them when it is NULL). Instances that
--- were marked (any status but planned) are history and are never touched. Detached
--- instances survive an edit of the series but not its deletion.
+-- were marked (any status but planned, except cancelled) are history and are never
+-- touched. Detached instances survive an edit of the series but not its deletion.
+-- Cancelled ones (deleted occurrences) are kept by an edit, so that they are not
+-- created again, and removed together with the series or its tail.
 DELETE FROM task_instances
 WHERE series_id = @series_id AND user_id = @user_id
-  AND status = 'planned'
+  AND (status = 'planned' OR (@include_cancelled::boolean AND status = 'cancelled'))
   AND (@include_detached::boolean OR NOT is_detached)
   AND (sqlc.narg('from_start')::timestamptz IS NULL OR original_start >= sqlc.narg('from_start'));
 
@@ -61,3 +63,23 @@ WHERE id = $1 AND user_id = $2;
 -- name: LockSeriesChanges :exec
 -- Serialises materialisation and edits of the series of one user.
 SELECT pg_advisory_xact_lock(hashtextextended('series:' || @user_id::text, 0));
+
+-- name: MoveSeriesInstances :exec
+-- Hands the instances of a series from `from_start` on over to another series (the
+-- tail that a split cuts off), so that they keep owning their slots there.
+UPDATE task_instances
+SET series_id = @new_series_id
+WHERE series_id = @old_series_id AND user_id = @user_id AND original_start >= @from_start;
+
+-- name: ListSeriesSurvivors :many
+-- The instances of a series that an edit leaves in place: detached, cancelled or marked.
+SELECT id, original_start FROM task_instances
+WHERE series_id = @series_id AND user_id = @user_id
+  AND (status <> 'planned' OR is_detached);
+
+-- name: SetInstanceOriginalStart :exec
+UPDATE task_instances SET original_start = $3 WHERE id = $1 AND user_id = $2;
+
+-- name: LockSeriesChangesShared :exec
+-- Materialisation may run in parallel with itself, but not with an edit of a series.
+SELECT pg_advisory_xact_lock_shared(hashtextextended('series:' || @user_id::text, 0));

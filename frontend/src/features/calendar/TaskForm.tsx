@@ -121,8 +121,17 @@ function TaskFormBody({
   const errors = validateTaskDraft(draft, tz)
   const patch = editing ? toUpdateRequest(editing, draft, tz, savedRepeat) : null
   const busy = create.isPending || update.isPending || remove.isPending
+  // A new rule needs the series and a new date needs this occurrence alone: both at once fit nothing.
+  const ruleChanged = patch?.recurrence !== undefined
+  const dateChanged = editing
+    ? dayOf(draft.start) !== dayOf(toLocalInput(new Date(editing.planned_start), tz))
+    : false
+  const conflict = inSeries && ruleChanged && dateChanged
   const canSave =
-    Object.keys(errors).length === 0 && !busy && (patch === null || Object.keys(patch).length > 0)
+    Object.keys(errors).length === 0 &&
+    !busy &&
+    !conflict &&
+    (patch === null || Object.keys(patch).length > 0)
 
   async function run(action: () => Promise<unknown>, fail: (message: string | null) => void) {
     fail(null)
@@ -159,11 +168,6 @@ function TaskFormBody({
   const start = fromLocalInput(draft.start, tz)
   const end = fromLocalInput(draft.end, tz)
 
-  // What the save may apply to: a new rule needs the series; a new date needs this occurrence only.
-  const ruleChanged = patch?.recurrence !== undefined
-  const dateChanged = editing
-    ? dayOf(draft.start) !== dayOf(toLocalInput(new Date(editing.planned_start), tz))
-    : false
   const saveOptions: ScopeOption[] = [
     {
       scope: 'this',
@@ -281,6 +285,13 @@ function TaskFormBody({
                 </div>
               </fieldset>
             </>
+          )}
+
+          {conflict && (
+            <p role="alert" className="text-sm text-danger">
+              Нельзя менять дату и правило повтора одновременно: сохраните сначала одно, потом
+              другое
+            </p>
           )}
 
           {error && dialog === null && (

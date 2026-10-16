@@ -67,7 +67,9 @@ func (s *Service) Materialize(ctx context.Context, userID uuid.UUID, from, to ti
 		return nil
 	}
 	return s.store.InTx(ctx, func(q *store.Queries) error {
-		if err := q.LockSeriesChanges(ctx, userID.String()); err != nil {
+		// A shared lock: windows are materialised in parallel, but never while an
+		// edit of a series (which takes the exclusive lock) is running.
+		if err := q.LockSeriesChangesShared(ctx, userID.String()); err != nil {
 			return fmt.Errorf("lock series: %w", err)
 		}
 		// Read again under the lock: an edit may have changed the rules meanwhile.
@@ -244,6 +246,8 @@ func setSeriesCategories(ctx context.Context, q *store.Queries, userID, seriesID
 
 // timeChange is a change of the time of day and the duration of a series.
 type timeChange struct {
+	// setTime is false when only the end was edited: the duration changes, the time of day does not.
+	setTime         bool
 	hour, minute    int
 	durationMinutes int
 }
@@ -267,7 +271,7 @@ func seriesTimeChange(cur store.TaskInstance, in UpdateInput, loc *time.Location
 	}
 
 	was, now := recurrence.WallOf(cur.PlannedStart, loc), recurrence.WallOf(start, loc)
-	if was.Year() != now.Year() || was.YearDay() != now.YearDay() {
+	if in.PlannedStart != nil && (was.Year() != now.Year() || was.YearDay() != now.YearDay()) {
 		return nil, &validation.Error{
 			Code: CodeSeriesDateChange, Field: "planned_start",
 			Message: "the date of an occurrence cannot be changed for a series; change this occurrence only",
@@ -277,14 +281,17 @@ func seriesTimeChange(cur store.TaskInstance, in UpdateInput, loc *time.Location
 	if now.Second() != 0 || duration%time.Minute != 0 {
 		return nil, &validation.Error{Field: "planned_start", Message: "times of a repeating task must be whole minutes"}
 	}
-	return &timeChange{hour: now.Hour(), minute: now.Minute(), durationMinutes: int(duration / time.Minute)}, nil
+	return &timeChange{
+		setTime: in.PlannedStart != nil, hour: now.Hour(), minute: now.Minute(),
+		durationMinutes: int(duration / time.Minute),
+	}, nil
 }
 
 // withTime returns the wall time of `day` at the time of day of the change; with
 // no change it keeps the time of `base`.
 func withTime(day, base recurrence.Wall, tc *timeChange) recurrence.Wall {
 	h, m := base.Hour(), base.Minute()
-	if tc != nil {
+	if tc != nil && tc.setTime {
 		h, m = tc.hour, tc.minute
 	}
 	return time.Date(day.Year(), day.Month(), day.Day(), h, m, 0, 0, time.UTC)
@@ -392,7 +399,13 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 				return err
 			}
 		}
-		return deleteRewritable(ctx, q, userID, row.ID, false, nil)
+		if err := deleteRewritable(ctx, q, userID, row.ID, false, false, nil); err != nil {
+			return err
+		}
+		if tc != nil && tc.setTime {
+			return rekeySurvivors(ctx, q, userID, row.ID, loc, tc)
+		}
+		return nil
 	}
 
 	// ScopeFollowing in the middle of the series: it is cut in two. The old series
@@ -436,7 +449,49 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	if err := setSeriesCategories(ctx, q, userID, created.ID, newCategories); err != nil {
 		return err
 	}
-	return deleteRewritable(ctx, q, userID, row.ID, false, &at)
+	if err := deleteRewritable(ctx, q, userID, row.ID, false, false, &at); err != nil {
+		return err
+	}
+	// What is left of the tail (deleted, edited and marked occurrences) now belongs to
+	// the new series, and keeps its slots there: nothing is created twice.
+	err = q.MoveSeriesInstances(ctx, store.MoveSeriesInstancesParams{
+		NewSeriesID: uuid.NullUUID{UUID: created.ID, Valid: true},
+		OldSeriesID: uuid.NullUUID{UUID: row.ID, Valid: true},
+		UserID:      userID, FromStart: &at,
+	})
+	if err != nil {
+		return fmt.Errorf("move series instances: %w", err)
+	}
+	if tc != nil && tc.setTime {
+		return rekeySurvivors(ctx, q, userID, created.ID, loc, tc)
+	}
+	return nil
+}
+
+// rekeySurvivors moves the keys (original starts) of the occurrences that an edit
+// leaves in place (deleted, edited and marked ones) to the new time of day of the
+// series, on the same local date. A series has at most one occurrence per day, so
+// the date identifies the slot: without this, a new time would make the template
+// create a second occurrence on each of those days.
+func rekeySurvivors(ctx context.Context, q *store.Queries, userID, seriesID uuid.UUID, loc *time.Location, tc *timeChange) error {
+	rows, err := q.ListSeriesSurvivors(ctx, store.ListSeriesSurvivorsParams{SeriesID: uuid.NullUUID{UUID: seriesID, Valid: true}, UserID: userID})
+	if err != nil {
+		return fmt.Errorf("list survivors: %w", err)
+	}
+	for _, r := range rows {
+		if r.OriginalStart == nil {
+			continue
+		}
+		day := recurrence.WallOf(*r.OriginalStart, loc)
+		key := recurrence.Instant(time.Date(day.Year(), day.Month(), day.Day(), tc.hour, tc.minute, 0, 0, time.UTC), loc)
+		if key.Equal(*r.OriginalStart) {
+			continue
+		}
+		if err := q.SetInstanceOriginalStart(ctx, store.SetInstanceOriginalStartParams{ID: r.ID, UserID: userID, OriginalStart: &key}); err != nil {
+			return fmt.Errorf("re-key instance: %w", err)
+		}
+	}
+	return nil
 }
 
 func deleteSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur store.TaskInstance, scope Scope) error {
@@ -460,7 +515,7 @@ func deleteSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	if scope == ScopeAll || before == 0 {
 		// Planned occurrences go; marked ones are history and keep their rows,
 		// which lose the link to the deleted series.
-		if err := deleteRewritable(ctx, q, userID, row.ID, true, nil); err != nil {
+		if err := deleteRewritable(ctx, q, userID, row.ID, true, true, nil); err != nil {
 			return err
 		}
 		if err := q.DeleteSeries(ctx, store.DeleteSeriesParams{ID: row.ID, UserID: userID}); err != nil {
@@ -476,15 +531,15 @@ func deleteSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	if err != nil {
 		return fmt.Errorf("end series: %w", err)
 	}
-	return deleteRewritable(ctx, q, userID, row.ID, true, &at)
+	return deleteRewritable(ctx, q, userID, row.ID, true, true, &at)
 }
 
 // deleteRewritable removes the occurrences of a series that an edit or a delete
 // of the series may remove (see the query for the rule that protects history).
-func deleteRewritable(ctx context.Context, q *store.Queries, userID, seriesID uuid.UUID, includeDetached bool, from *time.Time) error {
+func deleteRewritable(ctx context.Context, q *store.Queries, userID, seriesID uuid.UUID, includeDetached, includeCancelled bool, from *time.Time) error {
 	_, err := q.DeleteSeriesInstances(ctx, store.DeleteSeriesInstancesParams{
 		SeriesID: uuid.NullUUID{UUID: seriesID, Valid: true}, UserID: userID,
-		IncludeDetached: includeDetached, FromStart: from,
+		IncludeDetached: includeDetached, IncludeCancelled: includeCancelled, FromStart: from,
 	})
 	if err != nil {
 		return fmt.Errorf("delete series instances: %w", err)

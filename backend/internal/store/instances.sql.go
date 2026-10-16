@@ -206,7 +206,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 
 const lockInstance = `-- name: LockInstance :one
 SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached FROM task_instances
-WHERE id = $1 AND user_id = $2
+WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'
 FOR UPDATE
 `
 
@@ -215,6 +215,7 @@ type LockInstanceParams struct {
 	UserID uuid.UUID
 }
 
+// Cancelled instances are deleted occurrences: not found for edits and deletes.
 func (q *Queries) LockInstance(ctx context.Context, arg LockInstanceParams) (TaskInstance, error) {
 	row := q.db.QueryRow(ctx, lockInstance, arg.ID, arg.UserID)
 	var i TaskInstance

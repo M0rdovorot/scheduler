@@ -30,6 +30,7 @@ const (
 	// Error codes of validation errors that clients react to.
 	CodeSeriesDateChange = "series_date_change"
 	CodeNoOccurrences    = "no_occurrences"
+	CodeInstanceMarked   = "instance_marked"
 )
 
 var (
@@ -274,6 +275,12 @@ func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, scope Scope)
 			return nil
 		}
 		if scope == ScopeThis {
+			// A marked occurrence (a fact or a status other than planned) is history: its row is
+			// the record, so it cannot be turned into a deleted slot. How such a task is removed
+			// is decided together with tracking (stage 5).
+			if cur.Status != "planned" {
+				return &validation.Error{Code: CodeInstanceMarked, Field: "id", Message: "the task is marked and cannot be deleted from its series"}
+			}
 			if err := q.CancelInstance(ctx, store.CancelInstanceParams{ID: id, UserID: userID}); err != nil {
 				return fmt.Errorf("cancel instance: %w", err)
 			}

@@ -6,6 +6,9 @@ export function taskErrorMessage(error: unknown): string {
     if (error.code === 'series_date_change') {
       return 'Для всей серии нельзя менять дату. Выберите «Только это дело» или оставьте прежнюю дату'
     }
+    if (error.code === 'instance_marked') {
+      return 'Дело уже отмечено: его нельзя удалить из серии. Это можно будет сделать после этапа отслеживания'
+    }
     if (error.code === 'no_occurrences') return 'По этому правилу нет ни одного повтора'
     if (error.field === 'recurrence') return 'Некорректное правило повтора'
     if (error.field === 'scope') return 'Эта правка не подходит для разового дела'

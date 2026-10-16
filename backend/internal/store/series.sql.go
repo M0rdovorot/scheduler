@@ -135,26 +135,30 @@ func (q *Queries) DeleteSeries(ctx context.Context, arg DeleteSeriesParams) erro
 const deleteSeriesInstances = `-- name: DeleteSeriesInstances :execrows
 DELETE FROM task_instances
 WHERE series_id = $1 AND user_id = $2
-  AND status = 'planned'
-  AND ($3::boolean OR NOT is_detached)
-  AND ($4::timestamptz IS NULL OR original_start >= $4)
+  AND (status = 'planned' OR ($3::boolean AND status = 'cancelled'))
+  AND ($4::boolean OR NOT is_detached)
+  AND ($5::timestamptz IS NULL OR original_start >= $5)
 `
 
 type DeleteSeriesInstancesParams struct {
-	SeriesID        uuid.NullUUID
-	UserID          uuid.UUID
-	IncludeDetached bool
-	FromStart       *time.Time
+	SeriesID         uuid.NullUUID
+	UserID           uuid.UUID
+	IncludeCancelled bool
+	IncludeDetached  bool
+	FromStart        *time.Time
 }
 
 // Removes instances of a series that an edit or a delete of the series may remove:
 // planned ones, from `from_start` on (all of them when it is NULL). Instances that
-// were marked (any status but planned) are history and are never touched. Detached
-// instances survive an edit of the series but not its deletion.
+// were marked (any status but planned, except cancelled) are history and are never
+// touched. Detached instances survive an edit of the series but not its deletion.
+// Cancelled ones (deleted occurrences) are kept by an edit, so that they are not
+// created again, and removed together with the series or its tail.
 func (q *Queries) DeleteSeriesInstances(ctx context.Context, arg DeleteSeriesInstancesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteSeriesInstances,
 		arg.SeriesID,
 		arg.UserID,
+		arg.IncludeCancelled,
 		arg.IncludeDetached,
 		arg.FromStart,
 	)
@@ -257,6 +261,43 @@ func (q *Queries) ListSeriesCategoryIDs(ctx context.Context, arg ListSeriesCateg
 	return items, nil
 }
 
+const listSeriesSurvivors = `-- name: ListSeriesSurvivors :many
+SELECT id, original_start FROM task_instances
+WHERE series_id = $1 AND user_id = $2
+  AND (status <> 'planned' OR is_detached)
+`
+
+type ListSeriesSurvivorsParams struct {
+	SeriesID uuid.NullUUID
+	UserID   uuid.UUID
+}
+
+type ListSeriesSurvivorsRow struct {
+	ID            uuid.UUID
+	OriginalStart *time.Time
+}
+
+// The instances of a series that an edit leaves in place: detached, cancelled or marked.
+func (q *Queries) ListSeriesSurvivors(ctx context.Context, arg ListSeriesSurvivorsParams) ([]ListSeriesSurvivorsRow, error) {
+	rows, err := q.db.Query(ctx, listSeriesSurvivors, arg.SeriesID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSeriesSurvivorsRow
+	for rows.Next() {
+		var i ListSeriesSurvivorsRow
+		if err := rows.Scan(&i.ID, &i.OriginalStart); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSeriesChanges = `-- name: LockSeriesChanges :exec
 SELECT pg_advisory_xact_lock(hashtextextended('series:' || $1::text, 0))
 `
@@ -264,6 +305,56 @@ SELECT pg_advisory_xact_lock(hashtextextended('series:' || $1::text, 0))
 // Serialises materialisation and edits of the series of one user.
 func (q *Queries) LockSeriesChanges(ctx context.Context, userID string) error {
 	_, err := q.db.Exec(ctx, lockSeriesChanges, userID)
+	return err
+}
+
+const lockSeriesChangesShared = `-- name: LockSeriesChangesShared :exec
+SELECT pg_advisory_xact_lock_shared(hashtextextended('series:' || $1::text, 0))
+`
+
+// Materialisation may run in parallel with itself, but not with an edit of a series.
+func (q *Queries) LockSeriesChangesShared(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, lockSeriesChangesShared, userID)
+	return err
+}
+
+const moveSeriesInstances = `-- name: MoveSeriesInstances :exec
+UPDATE task_instances
+SET series_id = $1
+WHERE series_id = $2 AND user_id = $3 AND original_start >= $4
+`
+
+type MoveSeriesInstancesParams struct {
+	NewSeriesID uuid.NullUUID
+	OldSeriesID uuid.NullUUID
+	UserID      uuid.UUID
+	FromStart   *time.Time
+}
+
+// Hands the instances of a series from `from_start` on over to another series (the
+// tail that a split cuts off), so that they keep owning their slots there.
+func (q *Queries) MoveSeriesInstances(ctx context.Context, arg MoveSeriesInstancesParams) error {
+	_, err := q.db.Exec(ctx, moveSeriesInstances,
+		arg.NewSeriesID,
+		arg.OldSeriesID,
+		arg.UserID,
+		arg.FromStart,
+	)
+	return err
+}
+
+const setInstanceOriginalStart = `-- name: SetInstanceOriginalStart :exec
+UPDATE task_instances SET original_start = $3 WHERE id = $1 AND user_id = $2
+`
+
+type SetInstanceOriginalStartParams struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	OriginalStart *time.Time
+}
+
+func (q *Queries) SetInstanceOriginalStart(ctx context.Context, arg SetInstanceOriginalStartParams) error {
+	_, err := q.db.Exec(ctx, setInstanceOriginalStart, arg.ID, arg.UserID, arg.OriginalStart)
 	return err
 }
 
