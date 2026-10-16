@@ -171,9 +171,10 @@ test.describe('touch', () => {
     }
     await t.end()
 
+    // The browser scrolls (and flings) on its own schedule: wait for it instead of measuring once.
+    await expect.poll(scrollTop, { timeout: 5000 }).toBeGreaterThan(before + 50)
     await page.waitForTimeout(600)
     await expect(page.getByRole('dialog')).toHaveCount(0)
-    expect(await scrollTop()).toBeGreaterThan(before + 100)
   })
 
   test('a short tap does nothing', async ({ page }) => {
