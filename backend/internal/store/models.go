@@ -41,6 +41,7 @@ type HabitLog struct {
 	Date           time.Time
 	Value          int32
 	TaskInstanceID uuid.NullUUID
+	BaseValue      int32
 }
 
 type InstanceCategory struct {

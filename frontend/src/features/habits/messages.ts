@@ -3,6 +3,9 @@ import { ApiError } from '@/api/errors'
 /** A user-facing (Russian) explanation of a failed habit request. */
 export function habitErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'habit_weekly_in_grid')
+      return 'Привычку с целью «раз в неделю» нельзя поставить в календарь. Если она уже там, сначала уберите её из календаря'
+    if (error.code === 'habit_archived') return 'Привычку из архива нельзя поставить в календарь'
     if (error.status === 404) return 'Привычка не найдена. Возможно, она уже удалена'
     switch (error.field) {
       case 'title':
@@ -14,9 +17,9 @@ export function habitErrorMessage(error: unknown): string {
       case 'unit':
         return 'Единица измерения не длиннее 30 символов'
       case 'frequency':
-        return 'Привычку с целью «раз в неделю» нельзя поставить в календарь: сначала уберите её оттуда'
+        return 'Расписание неполное: выберите дни недели или число раз в неделю'
       case 'time':
-        return 'Привычку с целью «раз в неделю» или из архива нельзя поставить в календарь; время — в формате 07:30'
+        return 'Время — в формате 07:30'
       case 'duration_minutes':
         return 'Длительность — от 1 до 1440 минут'
       case 'date':

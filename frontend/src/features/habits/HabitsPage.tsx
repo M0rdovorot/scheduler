@@ -15,7 +15,10 @@ export function HabitsPage() {
   const [creating, setCreating] = useState(false)
 
   const todayIds = new Set(today.data?.items.map((i) => i.habit.id))
-  const others = (all.data ?? []).filter((h) => h.archived_at === null && !todayIds.has(h.id))
+  // Until today's list is here every habit would look like one that is not for today.
+  const others = today.data
+    ? (all.data ?? []).filter((h) => h.archived_at === null && !todayIds.has(h.id))
+    : []
   const archived = (all.data ?? []).filter((h) => h.archived_at !== null)
   const empty = all.data !== undefined && all.data.length === 0
 

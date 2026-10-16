@@ -591,3 +591,140 @@ func TestClearPlacement(t *testing.T) {
 		t.Errorf("occurrences = %d", n)
 	}
 }
+
+func TestTakingTheCreditBackRestoresWhatTheDayHadByHand(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	h := e.create(habit.Input{
+		Title: "Вода", Kind: habit.Quantity, Target: 8, Unit: "стаканов",
+		Placement: &habit.Placement{Time: "07:30", DurationMinutes: 20},
+	})
+	in := e.occurrences()[0]
+	e.mark(h.ID, day(14), 5)
+	if _, err := e.tasks.Complete(ctx, e.user, in.ID); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.cellValue(h.ID, 14); v != 8 {
+		t.Fatalf("value after done = %d, want the goal", v)
+	}
+	planned := "planned"
+	if _, err := e.tasks.EditTracking(ctx, e.user, in.ID, task.TrackingInput{Status: &planned}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.cellValue(h.ID, 14); v != 5 {
+		t.Errorf("value after un-doing = %d, want the 5 that was there", v)
+	}
+}
+
+func TestEditingADoneOccurrenceDoesNotResetACorrectedValue(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	h := e.create(habit.Input{
+		Title: "Бег", Kind: habit.Quantity, Target: 30, Unit: "мин",
+		Placement: &habit.Placement{Time: "07:30", DurationMinutes: 30},
+	})
+	in := e.occurrences()[0]
+	if _, err := e.tasks.Complete(ctx, e.user, in.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.mark(h.ID, day(14), 20) // the real value was lower
+	comment := "тяжело"
+	if _, err := e.tasks.EditTracking(ctx, e.user, in.ID, task.TrackingInput{Comment: &comment}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.cellValue(h.ID, 14); v != 20 {
+		t.Errorf("value = %d, the correction was lost", v)
+	}
+	// Editing the fact of the done occurrence keeps it done and keeps the value too.
+	start := at(14, 7, 0).UTC()
+	end := at(14, 7, 40).UTC()
+	if _, err := e.tasks.EditTracking(ctx, e.user, in.ID, task.TrackingInput{ActualStart: &start, ActualEnd: &end}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.cellValue(h.ID, 14); v != 20 {
+		t.Errorf("value after a new fact = %d, want 20", v)
+	}
+}
+
+func TestACreditIsTakenBackAlsoAfterTheHabitLeftTheGrid(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	h := e.create(habit.Input{Placement: &habit.Placement{Time: "07:30", DurationMinutes: 20}})
+	in := e.occurrences()[0]
+	if _, err := e.tasks.Complete(ctx, e.user, in.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.habits.ClearPlacement(ctx, e.user, h.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The marked occurrence stays as an ordinary task that has lost its series.
+	planned := "planned"
+	if _, err := e.tasks.EditTracking(ctx, e.user, in.ID, task.TrackingInput{Status: &planned}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.cellValue(h.ID, 14); v != 0 {
+		t.Errorf("value = %d, the credit of a task that is not done is still there", v)
+	}
+}
+
+func TestAColorOrGoalChangeLeavesTheGridAlone(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	h := e.create(habit.Input{
+		Title: "Вода", Kind: habit.Quantity, Target: 8, Unit: "стаканов",
+		Placement: &habit.Placement{Time: "07:30", DurationMinutes: 20},
+	})
+	before := e.occurrences()
+	if _, err := e.habits.Update(ctx, e.user, h.ID, habit.Patch{Color: ptr("#ef4444"), Target: ptr(10)}); err != nil {
+		t.Fatal(err)
+	}
+	after := e.occurrences()
+	if len(after) != len(before) {
+		t.Fatalf("occurrences: %d before, %d after", len(before), len(after))
+	}
+	for i := range before {
+		if before[i].ID != after[i].ID {
+			t.Errorf("occurrence %d was made again", i)
+		}
+	}
+	// A change of the title does rewrite them.
+	if _, err := e.habits.Update(ctx, e.user, h.ID, habit.Patch{Title: ptr("Вода дома")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.occurrences(); len(got) == 0 || got[0].Title != "Вода дома" {
+		t.Errorf("title did not reach the grid: %+v", got)
+	}
+}
+
+func TestMarksBeforeTheYear2000AreRefused(t *testing.T) {
+	e := newEnv(t)
+	h := e.create(habit.Input{})
+	err := e.habits.SetMark(context.Background(), e.user, h.ID, habit.DayOf(1, time.January, 1), 1)
+	if !isValidation(err, "date") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestErrorCodesTellWhyAHabitCannotBeInTheGrid(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	weekly := e.create(habit.Input{Schedule: habit.Schedule{Frequency: habit.TimesPerWeek, TimesPerWeek: 2}})
+	var v *validation.Error
+	_, err := e.habits.SetPlacement(ctx, e.user, weekly.ID, habit.Placement{Time: "07:00", DurationMinutes: 10})
+	if !errors.As(err, &v) || v.ErrorCode() != habit.CodeWeeklyInGrid {
+		t.Errorf("weekly: %v", err)
+	}
+	daily := e.create(habit.Input{})
+	if _, err := e.habits.Archive(ctx, e.user, daily.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.habits.SetPlacement(ctx, e.user, daily.ID, habit.Placement{Time: "07:00", DurationMinutes: 10})
+	if !errors.As(err, &v) || v.ErrorCode() != habit.CodeArchived {
+		t.Errorf("archived: %v", err)
+	}
+	// An incomplete schedule keeps the generic code.
+	_, err = e.habits.Create(ctx, e.user, habit.Input{Title: "a", Kind: habit.Boolean, Color: "#112233", Schedule: habit.Schedule{Frequency: habit.Weekdays}})
+	if !errors.As(err, &v) || v.ErrorCode() != validation.CodeFailed || v.Field != "frequency" {
+		t.Errorf("incomplete: %v", err)
+	}
+}

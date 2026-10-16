@@ -27,6 +27,16 @@ const (
 	maxPlacementMn = 24 * 60
 )
 
+const (
+	// CodeWeeklyInGrid: a habit with a weekly goal has no day, so it cannot sit in the grid.
+	CodeWeeklyInGrid = "habit_weekly_in_grid"
+	// CodeArchived: an archived habit cannot be put in the grid.
+	CodeArchived = "habit_archived"
+)
+
+// earliestMark is the oldest day a mark can be made for.
+var earliestMark = DayOf(2000, time.January, 1)
+
 var (
 	ErrNotFound = errors.New("habit not found")
 
@@ -242,7 +252,7 @@ func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, in Patch) (H
 		}
 		placed := placements[id] != nil
 		if placed && f.schedule.Weekly() {
-			return &validation.Error{Field: "frequency", Message: "a habit with a weekly goal cannot be in the grid: take it out of the grid first"}
+			return &validation.Error{Code: CodeWeeklyInGrid, Field: "frequency", Message: "a habit with a weekly goal cannot be in the grid: take it out of the grid first"}
 		}
 
 		row, err := q.UpdateHabit(ctx, store.UpdateHabitParams{
@@ -253,11 +263,20 @@ func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, in Patch) (H
 		if err != nil {
 			return fmt.Errorf("update habit: %w", err)
 		}
+		// The series is rewritten (its planned occurrences are made again) only when something it
+		// is made of changed: not for a new color or goal.
 		if placed {
-			rule := ruleOf(f.schedule)
-			err := task.UpdateHabitSeries(ctx, q, userID, id, task.HabitSeriesPatch{Title: &f.title, Rule: &rule})
-			if err != nil {
-				return err
+			var sp task.HabitSeriesPatch
+			if f.title != h.Title {
+				sp.Title = &f.title
+			}
+			if rule := ruleOf(f.schedule); rule != ruleOf(h.Schedule) {
+				sp.Rule = &rule
+			}
+			if sp.Title != nil || sp.Rule != nil {
+				if err := task.UpdateHabitSeries(ctx, q, userID, id, sp); err != nil {
+					return err
+				}
 			}
 		}
 		out, err = get(ctx, q, userID, row.ID)
@@ -322,7 +341,7 @@ func (s *Service) SetPlacement(ctx context.Context, userID, id uuid.UUID, p Plac
 		}
 		h := fromRow(cur, nil)
 		if h.ArchivedAt != nil {
-			return &validation.Error{Field: "time", Message: "an archived habit cannot be put in the grid"}
+			return &validation.Error{Code: CodeArchived, Field: "time", Message: "an archived habit cannot be put in the grid"}
 		}
 		hour, minute, err := checkPlacement(h.Schedule, p)
 		if err != nil {
@@ -384,7 +403,7 @@ func (s *Service) place(ctx context.Context, q *store.Queries, userID, id uuid.U
 // checkPlacement validates a place in the grid for a schedule.
 func checkPlacement(schedule Schedule, p Placement) (hour, minute int, err error) {
 	if schedule.Weekly() {
-		return 0, 0, &validation.Error{Field: "time", Message: "a habit with a weekly goal cannot be put in the grid"}
+		return 0, 0, &validation.Error{Code: CodeWeeklyInGrid, Field: "time", Message: "a habit with a weekly goal cannot be put in the grid"}
 	}
 	if !timeRe.MatchString(p.Time) {
 		return 0, 0, &validation.Error{Field: "time", Message: "must be a time like 07:30"}
@@ -499,6 +518,9 @@ func (s *Service) SetMark(ctx context.Context, userID, id uuid.UUID, date Day, v
 		}
 		if date.After(LocalDay(s.now(), loc)) {
 			return &validation.Error{Field: "date", Message: "a mark cannot be made for a day that has not come"}
+		}
+		if date.Before(earliestMark) {
+			return &validation.Error{Field: "date", Message: "a mark cannot be made for a day before 2000"}
 		}
 		if value == 0 {
 			err = q.DeleteHabitLog(ctx, store.DeleteHabitLogParams{HabitID: id, UserID: userID, Date: date})

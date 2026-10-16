@@ -294,6 +294,20 @@ describe('the list of habits for today', () => {
     expect(screen.getByRole('link', { name: /Старая/ }).getAttribute('href')).toBe('/habits/old')
   })
 
+  it('does not show habits as "not for today" before today\'s list has come', async () => {
+    let release: (r: Response) => void = () => {}
+    const held = new Promise<Response>((resolve) => (release = resolve))
+    net.handler = (req) => (req.path === '/habits/today' ? held : server(req))
+    renderAt('/habits')
+    await waitFor(() => expect(net.calls.some((c) => c.path === '/habits')).toBe(true))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByRole('region', { name: 'Не на сегодня' })).toBeNull()
+    expect(screen.queryByText('Читать')).toBeNull()
+    release(json(200, { date: TODAY, items: todayItems() }))
+    expect(await screen.findByTestId('habits-today')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Не на сегодня' })).toBeNull()
+  })
+
   it('says so when there are no habits', async () => {
     habits = []
     renderAt('/habits')

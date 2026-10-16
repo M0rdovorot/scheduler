@@ -63,14 +63,16 @@ func (q *Queries) CreateHabit(ctx context.Context, arg CreateHabitParams) (Habit
 }
 
 const creditHabitDay = `-- name: CreditHabitDay :exec
-INSERT INTO habit_logs (habit_id, user_id, date, value, task_instance_id)
-SELECT h.id, h.user_id, (ti.planned_start AT TIME ZONE ts.timezone)::date, h.target_value, ti.id
+INSERT INTO habit_logs (habit_id, user_id, date, value, task_instance_id, base_value)
+SELECT h.id, h.user_id, (ti.planned_start AT TIME ZONE ts.timezone)::date, h.target_value, ti.id, 0
 FROM task_instances ti
 JOIN task_series ts ON ts.id = ti.series_id AND ts.user_id = ti.user_id
 JOIN habits h ON h.id = ts.habit_id AND h.user_id = ts.user_id
 WHERE ti.id = $1 AND ti.user_id = $2 AND ti.planned_start IS NOT NULL
 ON CONFLICT (habit_id, date) DO UPDATE
-SET value = EXCLUDED.value, task_instance_id = EXCLUDED.task_instance_id
+SET base_value = CASE WHEN habit_logs.task_instance_id IS NULL THEN habit_logs.value ELSE habit_logs.base_value END,
+    value = EXCLUDED.value,
+    task_instance_id = EXCLUDED.task_instance_id
 WHERE habit_logs.value < EXCLUDED.value
 `
 
@@ -79,8 +81,9 @@ type CreditHabitDayParams struct {
 	UserID     uuid.UUID
 }
 
-// A done occurrence of a habit in the grid credits the day of its plan (in the time zone
-// of its series) with the goal. A larger value that is there already is kept.
+// An occurrence of a habit in the grid that became done credits the day of its plan (in the
+// time zone of its series) with the goal. A value that is there already and is not lower is
+// kept; a lower one made by hand is remembered in base_value.
 func (q *Queries) CreditHabitDay(ctx context.Context, arg CreditHabitDayParams) error {
 	_, err := q.db.Exec(ctx, creditHabitDay, arg.InstanceID, arg.UserID)
 	return err
@@ -329,7 +332,7 @@ func (q *Queries) ListHabits(ctx context.Context, userID uuid.UUID) ([]Habit, er
 }
 
 const lockHabit = `-- name: LockHabit :one
-SELECT id, user_id, title, kind, target_value, unit, frequency, weekdays, times_per_week, color, archived_at, created_at FROM habits WHERE id = $1 AND user_id = $2 FOR UPDATE
+SELECT id, user_id, title, kind, target_value, unit, frequency, weekdays, times_per_week, color, archived_at, created_at FROM habits WHERE id = $1 AND user_id = $2 FOR NO KEY UPDATE
 `
 
 type LockHabitParams struct {
@@ -337,6 +340,7 @@ type LockHabitParams struct {
 	UserID uuid.UUID
 }
 
+// NO KEY UPDATE: it must not conflict with the key-share lock that a mark takes on the habit.
 func (q *Queries) LockHabit(ctx context.Context, arg LockHabitParams) (Habit, error) {
 	row := q.db.QueryRow(ctx, lockHabit, arg.ID, arg.UserID)
 	var i Habit
@@ -358,7 +362,14 @@ func (q *Queries) LockHabit(ctx context.Context, arg LockHabitParams) (Habit, er
 }
 
 const revokeHabitCredit = `-- name: RevokeHabitCredit :exec
-DELETE FROM habit_logs WHERE task_instance_id = $1 AND user_id = $2
+WITH restored AS (
+    UPDATE habit_logs AS r
+    SET value = r.base_value, base_value = 0, task_instance_id = NULL
+    WHERE r.task_instance_id = $1 AND r.user_id = $2 AND r.base_value > 0
+    RETURNING r.habit_id
+)
+DELETE FROM habit_logs AS d
+WHERE d.task_instance_id = $1 AND d.user_id = $2 AND d.base_value = 0
 `
 
 type RevokeHabitCreditParams struct {
@@ -366,7 +377,8 @@ type RevokeHabitCreditParams struct {
 	UserID     uuid.UUID
 }
 
-// The occurrence is no longer done: what it credited goes, a value edited by hand stays.
+// The occurrence is no longer done: what it credited goes (the value that the day had by hand
+// comes back); a value edited by hand afterwards is no longer linked to it and stays.
 func (q *Queries) RevokeHabitCredit(ctx context.Context, arg RevokeHabitCreditParams) error {
 	_, err := q.db.Exec(ctx, revokeHabitCredit, arg.InstanceID, arg.UserID)
 	return err
@@ -406,9 +418,9 @@ func (q *Queries) SetHabitArchived(ctx context.Context, arg SetHabitArchivedPara
 }
 
 const setHabitLog = `-- name: SetHabitLog :exec
-INSERT INTO habit_logs (habit_id, user_id, date, value, task_instance_id)
-VALUES ($1, $2, $3, $4, NULL)
-ON CONFLICT (habit_id, date) DO UPDATE SET value = EXCLUDED.value, task_instance_id = NULL
+INSERT INTO habit_logs (habit_id, user_id, date, value, task_instance_id, base_value)
+VALUES ($1, $2, $3, $4, NULL, 0)
+ON CONFLICT (habit_id, date) DO UPDATE SET value = EXCLUDED.value, task_instance_id = NULL, base_value = 0
 `
 
 type SetHabitLogParams struct {

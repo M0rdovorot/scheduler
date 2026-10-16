@@ -6,6 +6,7 @@ import type { Habit } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog } from '@/components/Dialog'
 import { fullDayLabel, todayIn } from '@/features/calendar/dates'
+import { useNow } from '@/lib/useNow'
 import { usePlatform } from '@/platform/context'
 import { HabitForm } from './HabitForm'
 import { frequencyLabel, progressLabel, streakLabel, weekdayNames } from './format'
@@ -19,7 +20,9 @@ export function HabitPage() {
   const { id = '' } = useParams()
   const { data: me } = useMe()
   const tz = me?.timezone ?? 'UTC'
-  const range = useMemo(() => heatmapRange(todayIn(tz)), [tz])
+  // The range follows the date: a page left open past midnight moves on to the new day.
+  const today = todayIn(tz, useNow(60_000))
+  const range = useMemo(() => heatmapRange(today), [today])
   const stats = useHabitStats(id, range.from, range.to)
   const [dialog, setDialog] = useState<'edit' | 'delete' | { day: HeatCell } | null>(null)
 
