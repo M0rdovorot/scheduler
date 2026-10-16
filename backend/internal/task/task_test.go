@@ -161,7 +161,7 @@ func TestCreateValidation(t *testing.T) {
 func TestTaskMayCrossMidnight(t *testing.T) {
 	e := newEnv(t)
 	in := e.create("Ночная смена", at(22, 0), at(22, 0).Add(8*time.Hour))
-	if got := in.PlannedEnd.Sub(in.PlannedStart); got != 8*time.Hour {
+	if got := in.PlannedEnd.Sub(*in.PlannedStart); got != 8*time.Hour {
 		t.Errorf("duration = %v", got)
 	}
 }

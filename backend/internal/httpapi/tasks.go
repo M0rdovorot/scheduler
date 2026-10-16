@@ -132,11 +132,25 @@ func toInstance(in task.Instance) Instance {
 	if ids == nil {
 		ids = []uuid.UUID{}
 	}
+	deviations := make([]Deviation, len(in.Deviations))
+	for i, d := range in.Deviations {
+		deviations[i] = Deviation{Kind: DeviationKind(d.Kind), Minutes: d.Minutes}
+	}
 	return Instance{
 		Id: in.ID, Title: in.Title, Description: in.Description,
 		PlannedStart: in.PlannedStart, PlannedEnd: in.PlannedEnd,
-		Status: InstanceStatus(in.Status), CategoryIds: ids, SeriesId: in.SeriesID,
+		ActualStart: in.ActualStart, ActualEnd: in.ActualEnd,
+		Status: InstanceStatus(in.Status), Comment: in.Comment, CategoryIds: ids, SeriesId: in.SeriesID,
+		RescheduledFrom: toLink(in.RescheduledFrom), RescheduledTo: toLink(in.RescheduledTo),
+		Deviations: deviations,
 	}
+}
+
+func toLink(l *task.Link) *InstanceLink {
+	if l == nil {
+		return nil
+	}
+	return &InstanceLink{Id: l.ID, PlannedStart: l.PlannedStart, PlannedEnd: l.PlannedEnd}
 }
 
 func taskNotFound() Error {

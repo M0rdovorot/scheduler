@@ -30,7 +30,7 @@ const (
 	// Error codes of validation errors that clients react to.
 	CodeSeriesDateChange = "series_date_change"
 	CodeNoOccurrences    = "no_occurrences"
-	CodeInstanceMarked   = "instance_marked"
+	CodeInvalidState     = "invalid_state"
 )
 
 var (
@@ -60,16 +60,33 @@ func ParseScope(s string) (Scope, bool) {
 	return "", false
 }
 
-type Instance struct {
+// Link points at the other half of a reschedule.
+type Link struct {
 	ID           uuid.UUID
-	Title        string
-	Description  string
 	PlannedStart time.Time
 	PlannedEnd   time.Time
-	Status       string
-	CategoryIDs  []uuid.UUID
+}
+
+type Instance struct {
+	ID          uuid.UUID
+	Title       string
+	Description string
+	// PlannedStart and PlannedEnd are nil for a task that was never planned.
+	PlannedStart *time.Time
+	PlannedEnd   *time.Time
+	// ActualStart is nil until the task is started or marked; ActualEnd is nil while a timer runs.
+	ActualStart *time.Time
+	ActualEnd   *time.Time
+	Status      string
+	Comment     string
+	CategoryIDs []uuid.UUID
 	// SeriesID is set for occurrences of a regular task.
 	SeriesID *uuid.UUID
+	// RescheduledFrom is the task this one replaced; RescheduledTo the one that replaced this.
+	RescheduledFrom *Link
+	RescheduledTo   *Link
+	// Deviations of the fact from the plan, by the user's threshold; computed, never stored.
+	Deviations []Deviation
 }
 
 type CreateInput struct {
@@ -97,10 +114,11 @@ type UpdateInput struct {
 
 type Service struct {
 	store *store.Store
+	now   func() time.Time
 }
 
 func NewService(s *store.Store) *Service {
-	return &Service{store: s}
+	return &Service{store: s, now: time.Now}
 }
 
 // List returns the tasks whose plan overlaps [from, to). The occurrences of
@@ -115,13 +133,19 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time
 	if err := s.Materialize(ctx, userID, from, to); err != nil {
 		return nil, err
 	}
-	rows, err := s.store.ListInstances(ctx, store.ListInstancesParams{UserID: userID, RangeFrom: from, RangeTo: to})
+	threshold, err := deviationThreshold(ctx, s.store.Queries, userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.ListInstances(ctx, store.ListInstancesParams{
+		UserID: userID, RangeFrom: &from, RangeTo: &to, Now: s.now(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list instances: %w", err)
 	}
 	out := make([]Instance, len(rows))
 	for i, r := range rows {
-		out[i] = fromRow(r)
+		out[i] = fromRow(r, threshold)
 	}
 	return out, nil
 }
@@ -153,7 +177,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 	err = s.store.InTx(ctx, func(q *store.Queries) error {
 		id, err := q.CreateInstance(ctx, store.CreateInstanceParams{
 			UserID: userID, Title: title, Description: in.Description,
-			PlannedStart: in.PlannedStart, PlannedEnd: in.PlannedEnd,
+			PlannedStart: &in.PlannedStart, PlannedEnd: &in.PlannedEnd,
 		})
 		if err != nil {
 			return fmt.Errorf("create instance: %w", err)
@@ -223,14 +247,23 @@ func updateInstance(ctx context.Context, q *store.Queries, userID uuid.UUID, cur
 		}
 		params.Description = *in.Description
 	}
-	if in.PlannedStart != nil {
-		params.PlannedStart = *in.PlannedStart
-	}
-	if in.PlannedEnd != nil {
-		params.PlannedEnd = *in.PlannedEnd
-	}
-	if err := validateRange(params.PlannedStart, params.PlannedEnd); err != nil {
-		return Instance{}, err
+	if cur.PlannedStart == nil {
+		// A task that was never planned has only a fact; it gets no plan afterwards.
+		if in.PlannedStart != nil || in.PlannedEnd != nil {
+			return Instance{}, &validation.Error{Field: "planned_start", Message: "a task outside the plan has no planned time"}
+		}
+	} else {
+		start, end := *cur.PlannedStart, *cur.PlannedEnd
+		if in.PlannedStart != nil {
+			start = *in.PlannedStart
+		}
+		if in.PlannedEnd != nil {
+			end = *in.PlannedEnd
+		}
+		if err := validateRange(start, end); err != nil {
+			return Instance{}, err
+		}
+		params.PlannedStart, params.PlannedEnd = &start, &end
 	}
 	var categoryIDs []uuid.UUID
 	if in.CategoryIDs != nil {
@@ -275,12 +308,8 @@ func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, scope Scope)
 			return nil
 		}
 		if scope == ScopeThis {
-			// A marked occurrence (a fact or a status other than planned) is history: its row is
-			// the record, so it cannot be turned into a deleted slot. How such a task is removed
-			// is decided together with tracking (stage 5).
-			if cur.Status != "planned" {
-				return &validation.Error{Code: CodeInstanceMarked, Field: "id", Message: "the task is marked and cannot be deleted from its series"}
-			}
+			// Also for a marked occurrence: the user asked for it (the client warns that the fact
+			// goes too). The row stays as a deleted slot, without its fact.
 			if err := q.CancelInstance(ctx, store.CancelInstanceParams{ID: id, UserID: userID}); err != nil {
 				return fmt.Errorf("cancel instance: %w", err)
 			}
@@ -291,6 +320,10 @@ func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, scope Scope)
 }
 
 func get(ctx context.Context, q *store.Queries, userID, id uuid.UUID) (Instance, error) {
+	threshold, err := deviationThreshold(ctx, q, userID)
+	if err != nil {
+		return Instance{}, err
+	}
 	r, err := q.GetInstance(ctx, store.GetInstanceParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Instance{}, ErrNotFound
@@ -298,17 +331,42 @@ func get(ctx context.Context, q *store.Queries, userID, id uuid.UUID) (Instance,
 	if err != nil {
 		return Instance{}, fmt.Errorf("get instance: %w", err)
 	}
-	return fromRow(store.ListInstancesRow(r)), nil
+	return fromRow(r, threshold), nil
 }
 
-// fromRow is the only place that maps a query row to Instance. GetInstanceRow
-// has the same fields as ListInstancesRow, so it converts directly.
-func fromRow(r store.ListInstancesRow) Instance {
-	return Instance{
-		ID: r.ID, Title: r.Title, Description: r.Description, PlannedStart: r.PlannedStart,
-		PlannedEnd: r.PlannedEnd, Status: r.Status, CategoryIDs: r.CategoryIds,
-		SeriesID: nullUUIDPtr(r.SeriesID),
+// deviationThreshold is the user's threshold from which a difference between plan and fact counts.
+func deviationThreshold(ctx context.Context, q *store.Queries, userID uuid.UUID) (int, error) {
+	u, err := q.GetUser(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("get user: %w", err)
 	}
+	return int(u.DeviationThresholdMinutes), nil
+}
+
+// fromRow is the only place that maps a query row to Instance.
+func fromRow(r store.InstanceDetail, threshold int) Instance {
+	in := Instance{
+		ID: r.ID, Title: r.Title, Description: r.Description,
+		PlannedStart: r.PlannedStart, PlannedEnd: r.PlannedEnd,
+		ActualStart: r.ActualStart, ActualEnd: r.ActualEnd,
+		Status: r.Status, Comment: r.Comment, CategoryIDs: r.CategoryIds,
+		SeriesID:        nullUUIDPtr(r.SeriesID),
+		RescheduledFrom: link(r.FromID, r.FromPlannedStart, r.FromPlannedEnd),
+		RescheduledTo:   link(r.ToID, r.ToPlannedStart, r.ToPlannedEnd),
+	}
+	// Deviations describe a fact: a task that is only planned (or dropped) has none.
+	switch r.Status {
+	case "in_progress", "done", "partial":
+		in.Deviations = Deviations(r.PlannedStart, r.PlannedEnd, r.ActualStart, r.ActualEnd, threshold)
+	}
+	return in
+}
+
+func link(id uuid.NullUUID, start, end *time.Time) *Link {
+	if !id.Valid || start == nil || end == nil {
+		return nil
+	}
+	return &Link{ID: id.UUID, PlannedStart: *start, PlannedEnd: *end}
 }
 
 func nullUUIDPtr(id uuid.NullUUID) *uuid.UUID {

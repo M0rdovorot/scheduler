@@ -17,6 +17,36 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for DeviationKind.
+const (
+	FinishedEarly DeviationKind = "finished_early"
+	FinishedLate  DeviationKind = "finished_late"
+	StartedEarly  DeviationKind = "started_early"
+	StartedLate   DeviationKind = "started_late"
+	TookLonger    DeviationKind = "took_longer"
+	TookShorter   DeviationKind = "took_shorter"
+)
+
+// Valid indicates whether the value is a known member of the DeviationKind enum.
+func (e DeviationKind) Valid() bool {
+	switch e {
+	case FinishedEarly:
+		return true
+	case FinishedLate:
+		return true
+	case StartedEarly:
+		return true
+	case StartedLate:
+		return true
+	case TookLonger:
+		return true
+	case TookShorter:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok          HealthStatus = "ok"
@@ -37,31 +67,31 @@ func (e HealthStatus) Valid() bool {
 
 // Defines values for InstanceStatus.
 const (
-	Cancelled   InstanceStatus = "cancelled"
-	Done        InstanceStatus = "done"
-	InProgress  InstanceStatus = "in_progress"
-	NotDone     InstanceStatus = "not_done"
-	Partial     InstanceStatus = "partial"
-	Planned     InstanceStatus = "planned"
-	Rescheduled InstanceStatus = "rescheduled"
+	InstanceStatusCancelled   InstanceStatus = "cancelled"
+	InstanceStatusDone        InstanceStatus = "done"
+	InstanceStatusInProgress  InstanceStatus = "in_progress"
+	InstanceStatusNotDone     InstanceStatus = "not_done"
+	InstanceStatusPartial     InstanceStatus = "partial"
+	InstanceStatusPlanned     InstanceStatus = "planned"
+	InstanceStatusRescheduled InstanceStatus = "rescheduled"
 )
 
 // Valid indicates whether the value is a known member of the InstanceStatus enum.
 func (e InstanceStatus) Valid() bool {
 	switch e {
-	case Cancelled:
+	case InstanceStatusCancelled:
 		return true
-	case Done:
+	case InstanceStatusDone:
 		return true
-	case InProgress:
+	case InstanceStatusInProgress:
 		return true
-	case NotDone:
+	case InstanceStatusNotDone:
 		return true
-	case Partial:
+	case InstanceStatusPartial:
 		return true
-	case Planned:
+	case InstanceStatusPlanned:
 		return true
-	case Rescheduled:
+	case InstanceStatusRescheduled:
 		return true
 	default:
 		return false
@@ -89,6 +119,33 @@ func (e SlotMinutes) Valid() bool {
 	case Slot5:
 		return true
 	case Slot60:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrackingPatchStatus.
+const (
+	TrackingPatchStatusDone       TrackingPatchStatus = "done"
+	TrackingPatchStatusInProgress TrackingPatchStatus = "in_progress"
+	TrackingPatchStatusNotDone    TrackingPatchStatus = "not_done"
+	TrackingPatchStatusPartial    TrackingPatchStatus = "partial"
+	TrackingPatchStatusPlanned    TrackingPatchStatus = "planned"
+)
+
+// Valid indicates whether the value is a known member of the TrackingPatchStatus enum.
+func (e TrackingPatchStatus) Valid() bool {
+	switch e {
+	case TrackingPatchStatusDone:
+		return true
+	case TrackingPatchStatusInProgress:
+		return true
+	case TrackingPatchStatusNotDone:
+		return true
+	case TrackingPatchStatusPartial:
+		return true
+	case TrackingPatchStatusPlanned:
 		return true
 	default:
 		return false
@@ -232,6 +289,15 @@ type DevLoginRequest struct {
 	Timezone string `json:"timezone"`
 }
 
+// Deviation A difference between plan and fact that reaches the user's threshold.
+type Deviation struct {
+	Kind    DeviationKind `json:"kind"`
+	Minutes int           `json:"minutes"`
+}
+
+// DeviationKind defines model for DeviationKind.
+type DeviationKind string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Machine-readable error code
@@ -254,16 +320,36 @@ type HealthStatus string
 
 // Instance defines model for Instance.
 type Instance struct {
-	CategoryIds  []openapi_types.UUID `json:"category_ids"`
-	Description  string               `json:"description"`
-	Id           openapi_types.UUID   `json:"id"`
-	PlannedEnd   time.Time            `json:"planned_end"`
-	PlannedStart time.Time            `json:"planned_start"`
+	// ActualEnd Null while a timer is running
+	ActualEnd *time.Time `json:"actual_end"`
+
+	// ActualStart Null until the task is started or marked
+	ActualStart *time.Time           `json:"actual_start"`
+	CategoryIds []openapi_types.UUID `json:"category_ids"`
+	Comment     string               `json:"comment"`
+	Description string               `json:"description"`
+
+	// Deviations Computed from the plan, the fact and the user's threshold; never stored
+	Deviations []Deviation        `json:"deviations"`
+	Id         openapi_types.UUID `json:"id"`
+	PlannedEnd *time.Time         `json:"planned_end"`
+
+	// PlannedStart Null for a task outside the plan
+	PlannedStart    *time.Time    `json:"planned_start"`
+	RescheduledFrom *InstanceLink `json:"rescheduled_from"`
+	RescheduledTo   *InstanceLink `json:"rescheduled_to"`
 
 	// SeriesId Set for occurrences of a regular task; see `GET /series/{id}`
 	SeriesId *openapi_types.UUID `json:"series_id"`
 	Status   InstanceStatus      `json:"status"`
 	Title    string              `json:"title"`
+}
+
+// InstanceLink The other half of a reschedule.
+type InstanceLink struct {
+	Id           openapi_types.UUID `json:"id"`
+	PlannedEnd   time.Time          `json:"planned_end"`
+	PlannedStart time.Time          `json:"planned_start"`
 }
 
 // InstanceStatus defines model for InstanceStatus.
@@ -287,6 +373,14 @@ type Recurrence struct {
 	//
 	// Example: FREQ=WEEKLY;BYDAY=MO,WE
 	Rrule string `json:"rrule"`
+}
+
+// RescheduleRequest defines model for RescheduleRequest.
+type RescheduleRequest struct {
+	// Comment The reason, shown on the original
+	Comment      *string   `json:"comment,omitempty"`
+	PlannedEnd   time.Time `json:"planned_end"`
+	PlannedStart time.Time `json:"planned_start"`
 }
 
 // Series defines model for Series.
@@ -334,6 +428,29 @@ type TelegramLoginRequest struct {
 	//
 	// Example: Europe/Moscow
 	Timezone string `json:"timezone"`
+}
+
+// TrackingPatch defines model for TrackingPatch.
+type TrackingPatch struct {
+	ActualEnd   *time.Time           `json:"actual_end,omitempty"`
+	ActualStart *time.Time           `json:"actual_start,omitempty"`
+	Comment     *string              `json:"comment,omitempty"`
+	Status      *TrackingPatchStatus `json:"status,omitempty"`
+}
+
+// TrackingPatchStatus defines model for TrackingPatch.Status.
+type TrackingPatchStatus string
+
+// UnplannedRequest defines model for UnplannedRequest.
+type UnplannedRequest struct {
+	// ActualEnd Omit to start a timer
+	ActualEnd *time.Time `json:"actual_end,omitempty"`
+
+	// ActualStart Defaults to now
+	ActualStart *time.Time            `json:"actual_start,omitempty"`
+	CategoryIds *[]openapi_types.UUID `json:"category_ids,omitempty"`
+	Description *string               `json:"description,omitempty"`
+	Title       string                `json:"title"`
 }
 
 // UpdateCategoryRequest defines model for UpdateCategoryRequest.
@@ -443,8 +560,17 @@ type UpdateCategoryJSONRequestBody = UpdateCategoryRequest
 // MoveCategoryJSONRequestBody defines body for MoveCategory for application/json ContentType.
 type MoveCategoryJSONRequestBody = MoveCategoryRequest
 
+// CreateUnplannedJSONRequestBody defines body for CreateUnplanned for application/json ContentType.
+type CreateUnplannedJSONRequestBody = UnplannedRequest
+
 // UpdateInstanceJSONRequestBody defines body for UpdateInstance for application/json ContentType.
 type UpdateInstanceJSONRequestBody = UpdateInstanceRequest
+
+// RescheduleInstanceJSONRequestBody defines body for RescheduleInstance for application/json ContentType.
+type RescheduleInstanceJSONRequestBody = RescheduleRequest
+
+// UpdateTrackingJSONRequestBody defines body for UpdateTracking for application/json ContentType.
+type UpdateTrackingJSONRequestBody = TrackingPatch
 
 // UpdateMySettingsJSONRequestBody defines body for UpdateMySettings for application/json ContentType.
 type UpdateMySettingsJSONRequestBody = SettingsPatch
@@ -487,12 +613,30 @@ type ServerInterface interface {
 	// ListInstances Tasks planned within a time window
 	// (GET /instances)
 	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
+	// CreateUnplanned Add a task outside the plan
+	// (POST /instances/unplanned)
+	CreateUnplanned(w http.ResponseWriter, r *http.Request)
 	// DeleteInstance Delete a task
 	// (DELETE /instances/{id})
 	DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams)
 	// UpdateInstance Edit a task; omitted fields stay as they are
 	// (PATCH /instances/{id})
 	UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params UpdateInstanceParams)
+	// CompleteInstance Done in one tap: the fact becomes equal to the plan
+	// (POST /instances/{id}/complete)
+	CompleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	// RescheduleInstance Move a task to another time, leaving a trail
+	// (POST /instances/{id}/reschedule)
+	RescheduleInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	// StartInstance Start a timer: the fact begins now
+	// (POST /instances/{id}/start)
+	StartInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	// StopInstance Stop the timer: the fact ends now and the task is done
+	// (POST /instances/{id}/stop)
+	StopInstance(w http.ResponseWriter, r *http.Request, id InstanceId)
+	// UpdateTracking Edit the status, the fact and the comment by hand
+	// (PATCH /instances/{id}/tracking)
+	UpdateTracking(w http.ResponseWriter, r *http.Request, id InstanceId)
 	// GetMe Current user with settings
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -577,6 +721,12 @@ func (_ Unimplemented) ListInstances(w http.ResponseWriter, r *http.Request, par
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// CreateUnplanned Add a task outside the plan
+// (POST /instances/unplanned)
+func (_ Unimplemented) CreateUnplanned(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // DeleteInstance Delete a task
 // (DELETE /instances/{id})
 func (_ Unimplemented) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams) {
@@ -586,6 +736,36 @@ func (_ Unimplemented) DeleteInstance(w http.ResponseWriter, r *http.Request, id
 // UpdateInstance Edit a task; omitted fields stay as they are
 // (PATCH /instances/{id})
 func (_ Unimplemented) UpdateInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params UpdateInstanceParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CompleteInstance Done in one tap: the fact becomes equal to the plan
+// (POST /instances/{id}/complete)
+func (_ Unimplemented) CompleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RescheduleInstance Move a task to another time, leaving a trail
+// (POST /instances/{id}/reschedule)
+func (_ Unimplemented) RescheduleInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartInstance Start a timer: the fact begins now
+// (POST /instances/{id}/start)
+func (_ Unimplemented) StartInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StopInstance Stop the timer: the fact ends now and the task is done
+// (POST /instances/{id}/stop)
+func (_ Unimplemented) StopInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateTracking Edit the status, the fact and the comment by hand
+// (PATCH /instances/{id}/tracking)
+func (_ Unimplemented) UpdateTracking(w http.ResponseWriter, r *http.Request, id InstanceId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -868,6 +1048,20 @@ func (siw *ServerInterfaceWrapper) ListInstances(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// CreateUnplanned operation middleware
+func (siw *ServerInterfaceWrapper) CreateUnplanned(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateUnplanned(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteInstance operation middleware
 func (siw *ServerInterfaceWrapper) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 
@@ -943,6 +1137,136 @@ func (siw *ServerInterfaceWrapper) UpdateInstance(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateInstance(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteInstance operation middleware
+func (siw *ServerInterfaceWrapper) CompleteInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RescheduleInstance operation middleware
+func (siw *ServerInterfaceWrapper) RescheduleInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RescheduleInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartInstance operation middleware
+func (siw *ServerInterfaceWrapper) StartInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopInstance operation middleware
+func (siw *ServerInterfaceWrapper) StopInstance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopInstance(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTracking operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTracking(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id InstanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTracking(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1180,6 +1504,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/instances/{id}", wrapper.UpdateInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instances/unplanned", wrapper.CreateUnplanned)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instances/{id}/complete", wrapper.CompleteInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instances/{id}/start", wrapper.StartInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instances/{id}/stop", wrapper.StopInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/instances/{id}/tracking", wrapper.UpdateTracking)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/instances/{id}/reschedule", wrapper.RescheduleInstance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/series/{id}", wrapper.GetSeries)
@@ -1754,6 +2096,70 @@ func (response ListInstances401JSONResponse) VisitListInstancesResponse(w http.R
 	return err
 }
 
+type CreateUnplannedRequestObject struct {
+	Body *CreateUnplannedJSONRequestBody
+}
+
+type CreateUnplannedResponseObject interface {
+	VisitCreateUnplannedResponse(w http.ResponseWriter) error
+}
+
+type CreateUnplanned201JSONResponse Instance
+
+func (response CreateUnplanned201JSONResponse) VisitCreateUnplannedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUnplanned400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateUnplanned400JSONResponse) VisitCreateUnplannedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUnplanned401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateUnplanned401JSONResponse) VisitCreateUnplannedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateUnplanned404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateUnplanned404JSONResponse) VisitCreateUnplannedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteInstanceRequestObject struct {
 	Id     InstanceId `json:"id"`
 	Params DeleteInstanceParams
@@ -1876,6 +2282,328 @@ func (response UpdateInstance401JSONResponse) VisitUpdateInstanceResponse(w http
 type UpdateInstance404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateInstance404JSONResponse) VisitUpdateInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteInstanceRequestObject struct {
+	Id InstanceId `json:"id"`
+}
+
+type CompleteInstanceResponseObject interface {
+	VisitCompleteInstanceResponse(w http.ResponseWriter) error
+}
+
+type CompleteInstance200JSONResponse Instance
+
+func (response CompleteInstance200JSONResponse) VisitCompleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CompleteInstance400JSONResponse) VisitCompleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CompleteInstance401JSONResponse) VisitCompleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CompleteInstance404JSONResponse) VisitCompleteInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleInstanceRequestObject struct {
+	Id   InstanceId `json:"id"`
+	Body *RescheduleInstanceJSONRequestBody
+}
+
+type RescheduleInstanceResponseObject interface {
+	VisitRescheduleInstanceResponse(w http.ResponseWriter) error
+}
+
+type RescheduleInstance201JSONResponse Instance
+
+func (response RescheduleInstance201JSONResponse) VisitRescheduleInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RescheduleInstance400JSONResponse) VisitRescheduleInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RescheduleInstance401JSONResponse) VisitRescheduleInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RescheduleInstance404JSONResponse) VisitRescheduleInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartInstanceRequestObject struct {
+	Id InstanceId `json:"id"`
+}
+
+type StartInstanceResponseObject interface {
+	VisitStartInstanceResponse(w http.ResponseWriter) error
+}
+
+type StartInstance200JSONResponse Instance
+
+func (response StartInstance200JSONResponse) VisitStartInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response StartInstance400JSONResponse) VisitStartInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response StartInstance401JSONResponse) VisitStartInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response StartInstance404JSONResponse) VisitStartInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopInstanceRequestObject struct {
+	Id InstanceId `json:"id"`
+}
+
+type StopInstanceResponseObject interface {
+	VisitStopInstanceResponse(w http.ResponseWriter) error
+}
+
+type StopInstance200JSONResponse Instance
+
+func (response StopInstance200JSONResponse) VisitStopInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopInstance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response StopInstance400JSONResponse) VisitStopInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopInstance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response StopInstance401JSONResponse) VisitStopInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopInstance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response StopInstance404JSONResponse) VisitStopInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTrackingRequestObject struct {
+	Id   InstanceId `json:"id"`
+	Body *UpdateTrackingJSONRequestBody
+}
+
+type UpdateTrackingResponseObject interface {
+	VisitUpdateTrackingResponse(w http.ResponseWriter) error
+}
+
+type UpdateTracking200JSONResponse Instance
+
+func (response UpdateTracking200JSONResponse) VisitUpdateTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTracking400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateTracking400JSONResponse) VisitUpdateTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTracking401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateTracking401JSONResponse) VisitUpdateTrackingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTracking404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateTracking404JSONResponse) VisitUpdateTrackingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2107,12 +2835,30 @@ type StrictServerInterface interface {
 	// ListInstances Tasks planned within a time window
 	// (GET /instances)
 	ListInstances(ctx context.Context, request ListInstancesRequestObject) (ListInstancesResponseObject, error)
+	// CreateUnplanned Add a task outside the plan
+	// (POST /instances/unplanned)
+	CreateUnplanned(ctx context.Context, request CreateUnplannedRequestObject) (CreateUnplannedResponseObject, error)
 	// DeleteInstance Delete a task
 	// (DELETE /instances/{id})
 	DeleteInstance(ctx context.Context, request DeleteInstanceRequestObject) (DeleteInstanceResponseObject, error)
 	// UpdateInstance Edit a task; omitted fields stay as they are
 	// (PATCH /instances/{id})
 	UpdateInstance(ctx context.Context, request UpdateInstanceRequestObject) (UpdateInstanceResponseObject, error)
+	// CompleteInstance Done in one tap: the fact becomes equal to the plan
+	// (POST /instances/{id}/complete)
+	CompleteInstance(ctx context.Context, request CompleteInstanceRequestObject) (CompleteInstanceResponseObject, error)
+	// RescheduleInstance Move a task to another time, leaving a trail
+	// (POST /instances/{id}/reschedule)
+	RescheduleInstance(ctx context.Context, request RescheduleInstanceRequestObject) (RescheduleInstanceResponseObject, error)
+	// StartInstance Start a timer: the fact begins now
+	// (POST /instances/{id}/start)
+	StartInstance(ctx context.Context, request StartInstanceRequestObject) (StartInstanceResponseObject, error)
+	// StopInstance Stop the timer: the fact ends now and the task is done
+	// (POST /instances/{id}/stop)
+	StopInstance(ctx context.Context, request StopInstanceRequestObject) (StopInstanceResponseObject, error)
+	// UpdateTracking Edit the status, the fact and the comment by hand
+	// (PATCH /instances/{id}/tracking)
+	UpdateTracking(ctx context.Context, request UpdateTrackingRequestObject) (UpdateTrackingResponseObject, error)
 	// GetMe Current user with settings
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -2477,6 +3223,37 @@ func (sh *strictHandler) ListInstances(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// CreateUnplanned operation middleware
+func (sh *strictHandler) CreateUnplanned(w http.ResponseWriter, r *http.Request) {
+	var request CreateUnplannedRequestObject
+
+	var body CreateUnplannedJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateUnplanned(ctx, request.(CreateUnplannedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateUnplanned")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateUnplannedResponseObject); ok {
+		if err := validResponse.VisitCreateUnplannedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteInstance operation middleware
 func (sh *strictHandler) DeleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId, params DeleteInstanceParams) {
 	var request DeleteInstanceRequestObject
@@ -2531,6 +3308,150 @@ func (sh *strictHandler) UpdateInstance(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateInstanceResponseObject); ok {
 		if err := validResponse.VisitUpdateInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteInstance operation middleware
+func (sh *strictHandler) CompleteInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request CompleteInstanceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteInstance(ctx, request.(CompleteInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteInstanceResponseObject); ok {
+		if err := validResponse.VisitCompleteInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RescheduleInstance operation middleware
+func (sh *strictHandler) RescheduleInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request RescheduleInstanceRequestObject
+
+	request.Id = id
+
+	var body RescheduleInstanceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RescheduleInstance(ctx, request.(RescheduleInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RescheduleInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RescheduleInstanceResponseObject); ok {
+		if err := validResponse.VisitRescheduleInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartInstance operation middleware
+func (sh *strictHandler) StartInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request StartInstanceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartInstance(ctx, request.(StartInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartInstanceResponseObject); ok {
+		if err := validResponse.VisitStartInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopInstance operation middleware
+func (sh *strictHandler) StopInstance(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request StopInstanceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopInstance(ctx, request.(StopInstanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopInstance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopInstanceResponseObject); ok {
+		if err := validResponse.VisitStopInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTracking operation middleware
+func (sh *strictHandler) UpdateTracking(w http.ResponseWriter, r *http.Request, id InstanceId) {
+	var request UpdateTrackingRequestObject
+
+	request.Id = id
+
+	var body UpdateTrackingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTracking(ctx, request.(UpdateTrackingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTracking")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateTrackingResponseObject); ok {
+		if err := validResponse.VisitUpdateTrackingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

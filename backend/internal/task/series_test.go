@@ -348,8 +348,8 @@ func TestEditAllChangesTimeOfDayAndDurationNotTheDate(t *testing.T) {
 	got := e.list(from, to)
 	equal(t, days(got, "Europe/Moscow"), []string{"Wed 10-14 11:30", "Thu 10-15 11:30", "Fri 10-16 11:30"})
 	for _, in := range got {
-		if in.PlannedEnd.Sub(in.PlannedStart) != 90*time.Minute {
-			t.Errorf("duration of %v = %v", in.PlannedStart, in.PlannedEnd.Sub(in.PlannedStart))
+		if in.PlannedEnd.Sub(*in.PlannedStart) != 90*time.Minute {
+			t.Errorf("duration of %v = %v", in.PlannedStart, in.PlannedEnd.Sub(*in.PlannedStart))
 		}
 	}
 
@@ -420,7 +420,7 @@ func TestEditFollowingSplitsTheSeries(t *testing.T) {
 		if old && (in.Title != "Планёрка" || in.PlannedStart.In(time.UTC).Hour() != 6) {
 			t.Errorf("%d: an earlier occurrence changed: %+v", i, in)
 		}
-		if !old && (in.Title != "Новая" || in.PlannedEnd.Sub(in.PlannedStart) != 45*time.Minute) {
+		if !old && (in.Title != "Новая" || in.PlannedEnd.Sub(*in.PlannedStart) != 45*time.Minute) {
 			t.Errorf("%d: a following occurrence did not change: %+v", i, in)
 		}
 	}
@@ -530,9 +530,7 @@ func TestMarkedOccurrencesAreNeverTouched(t *testing.T) {
 
 	// The 15th and 16th were marked ("done" and "not done"); the instances are history.
 	for _, id := range []uuid.UUID{list[1].ID, list[2].ID} {
-		if _, err := e.pool.Exec(ctx, `UPDATE task_instances SET status = 'done' WHERE id = $1`, id); err != nil {
-			t.Fatal(err)
-		}
+		e.setStatus(id, "done")
 	}
 
 	if _, err := e.svc.Update(ctx, e.user, list[0].ID, task.ScopeAll, task.UpdateInput{Title: ptr("Новая")}); err != nil {
@@ -696,8 +694,8 @@ func TestOccurrencesKeepTheWallClockAcrossDaylightSavingTime(t *testing.T) {
 	var utc []string
 	for _, in := range got {
 		utc = append(utc, in.PlannedStart.UTC().Format("01-02 15:04"))
-		if in.PlannedEnd.Sub(in.PlannedStart) != time.Hour {
-			t.Errorf("duration = %v", in.PlannedEnd.Sub(in.PlannedStart))
+		if in.PlannedEnd.Sub(*in.PlannedStart) != time.Hour {
+			t.Errorf("duration = %v", in.PlannedEnd.Sub(*in.PlannedStart))
 		}
 	}
 	equal(t, utc, []string{"10-30 13:00", "10-31 13:00", "11-01 14:00", "11-02 14:00"})
@@ -742,10 +740,12 @@ func TestScopeParsing(t *testing.T) {
 	}
 }
 
-// setStatus marks a row as the tracking of stage 5 will (done, partial, …).
+// setStatus marks a row as done, partial and the like.
 func (e *env) setStatus(id uuid.UUID, status string) {
 	e.t.Helper()
-	if _, err := e.pool.Exec(context.Background(), `UPDATE task_instances SET status = $1 WHERE id = $2`, status, id); err != nil {
+	// The table requires a fact for a finished task: take it from the plan.
+	if _, err := e.pool.Exec(context.Background(),
+		`UPDATE task_instances SET status = $1, actual_start = planned_start, actual_end = planned_end WHERE id = $2`, status, id); err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -887,28 +887,32 @@ func TestEditingOnlyTheEndKeepsTheTimeOfDayOfTheSeries(t *testing.T) {
 		// The moved (detached) occurrence on the 15th keeps its own time and length.
 		if in.Title == "Планёрка" && in.PlannedStart.In(time.UTC).Day() != 15 {
 			times = append(times, in.PlannedStart.In(time.UTC).Format("15:04"))
-			if in.PlannedEnd.Sub(in.PlannedStart) != 90*time.Minute {
-				t.Errorf("duration = %v, want 1h30m", in.PlannedEnd.Sub(in.PlannedStart))
+			if in.PlannedEnd.Sub(*in.PlannedStart) != 90*time.Minute {
+				t.Errorf("duration = %v, want 1h30m", in.PlannedEnd.Sub(*in.PlannedStart))
 			}
 		}
 	}
 	equal(t, times, []string{"06:00", "06:00", "06:00"})
 }
 
-func TestAMarkedOccurrenceCannotBeDeletedFromItsSeries(t *testing.T) {
+func TestDeletingAMarkedOccurrenceDropsItsFactButKeepsTheSlot(t *testing.T) {
 	e := newSeriesEnv(t)
 	ctx := context.Background()
 	e.createSeries("FREQ=DAILY")
-	list := e.list(msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 16, 0, 0))
+	from, to := msk(t, 2026, 10, 14, 0, 0), msk(t, 2026, 10, 17, 0, 0)
+	list := e.list(from, to)
 	e.setStatus(list[0].ID, "done")
 
-	err := e.svc.Delete(ctx, e.user, list[0].ID, task.ScopeThis)
-	var verr *validation.Error
-	if !errors.As(err, &verr) || verr.ErrorCode() != task.CodeInstanceMarked {
-		t.Fatalf("err = %v, want %s", err, task.CodeInstanceMarked)
+	if err := e.svc.Delete(ctx, e.user, list[0].ID, task.ScopeThis); err != nil {
+		t.Fatal(err)
 	}
-	if n := e.rowCount("status = 'done'"); n != 1 {
-		t.Errorf("%d done rows, want the record kept", n)
+	// The occurrence is gone from the calendar and does not come back; its fact is gone too.
+	equal(t, days(e.list(from, to), "Europe/Moscow"), []string{"Thu 10-15 09:00", "Fri 10-16 09:00"})
+	if n := e.rowCount("status = 'cancelled' AND actual_start IS NULL AND actual_end IS NULL"); n != 1 {
+		t.Errorf("%d cancelled rows without a fact, want 1", n)
+	}
+	if n := e.rowCount("status = 'done'"); n != 0 {
+		t.Errorf("%d done rows left", n)
 	}
 }
 

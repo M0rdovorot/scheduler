@@ -26,6 +26,27 @@ type InstanceCategory struct {
 	UserID     uuid.UUID
 }
 
+type InstanceDetail struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Title            string
+	Description      string
+	PlannedStart     *time.Time
+	PlannedEnd       *time.Time
+	ActualStart      *time.Time
+	ActualEnd        *time.Time
+	Status           string
+	Comment          string
+	SeriesID         uuid.NullUUID
+	CategoryIds      []uuid.UUID
+	FromID           uuid.NullUUID
+	FromPlannedStart *time.Time
+	FromPlannedEnd   *time.Time
+	ToID             uuid.NullUUID
+	ToPlannedStart   *time.Time
+	ToPlannedEnd     *time.Time
+}
+
 type SeriesCategory struct {
 	SeriesID   uuid.UUID
 	CategoryID uuid.UUID
@@ -42,18 +63,22 @@ type Session struct {
 }
 
 type TaskInstance struct {
-	ID            uuid.UUID
-	UserID        uuid.UUID
-	Title         string
-	Description   string
-	PlannedStart  time.Time
-	PlannedEnd    time.Time
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	SeriesID      uuid.NullUUID
-	OriginalStart *time.Time
-	IsDetached    bool
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	Title             string
+	Description       string
+	PlannedStart      *time.Time
+	PlannedEnd        *time.Time
+	Status            string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	SeriesID          uuid.NullUUID
+	OriginalStart     *time.Time
+	IsDetached        bool
+	ActualStart       *time.Time
+	ActualEnd         *time.Time
+	Comment           string
+	RescheduledFromID uuid.NullUUID
 }
 
 type TaskSeries struct {

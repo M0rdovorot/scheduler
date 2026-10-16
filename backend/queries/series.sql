@@ -45,9 +45,9 @@ WHERE sc.series_id = @series_id AND sc.user_id = @user_id;
 
 -- name: DeleteSeriesInstances :execrows
 -- Removes instances of a series that an edit or a delete of the series may remove:
--- planned ones, from `from_start` on (all of them when it is NULL). Instances that
--- were marked (any status but planned, except cancelled) are history and are never
--- touched. Detached instances survive an edit of the series but not its deletion.
+-- planned ones (status planned, which by a table check means no fact), from
+-- `from_start` on (all of them when it is NULL). Instances that were marked (a
+-- status other than planned, except cancelled) are history and are never touched. Detached instances survive an edit of the series but not its deletion.
 -- Cancelled ones (deleted occurrences) are kept by an edit, so that they are not
 -- created again, and removed together with the series or its tail.
 DELETE FROM task_instances
@@ -57,7 +57,9 @@ WHERE series_id = @series_id AND user_id = @user_id
   AND (sqlc.narg('from_start')::timestamptz IS NULL OR original_start >= sqlc.narg('from_start'));
 
 -- name: CancelInstance :exec
-UPDATE task_instances SET status = 'cancelled', updated_at = now()
+-- A deleted occurrence keeps its row (so that it is not created again) but not its fact.
+UPDATE task_instances
+SET status = 'cancelled', actual_start = NULL, actual_end = NULL, updated_at = now()
 WHERE id = $1 AND user_id = $2;
 
 -- name: LockSeriesChanges :exec

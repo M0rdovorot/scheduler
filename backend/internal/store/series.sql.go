@@ -29,7 +29,8 @@ func (q *Queries) AddSeriesCategories(ctx context.Context, arg AddSeriesCategori
 }
 
 const cancelInstance = `-- name: CancelInstance :exec
-UPDATE task_instances SET status = 'cancelled', updated_at = now()
+UPDATE task_instances
+SET status = 'cancelled', actual_start = NULL, actual_end = NULL, updated_at = now()
 WHERE id = $1 AND user_id = $2
 `
 
@@ -38,6 +39,7 @@ type CancelInstanceParams struct {
 	UserID uuid.UUID
 }
 
+// A deleted occurrence keeps its row (so that it is not created again) but not its fact.
 func (q *Queries) CancelInstance(ctx context.Context, arg CancelInstanceParams) error {
 	_, err := q.db.Exec(ctx, cancelInstance, arg.ID, arg.UserID)
 	return err
@@ -149,9 +151,9 @@ type DeleteSeriesInstancesParams struct {
 }
 
 // Removes instances of a series that an edit or a delete of the series may remove:
-// planned ones, from `from_start` on (all of them when it is NULL). Instances that
-// were marked (any status but planned, except cancelled) are history and are never
-// touched. Detached instances survive an edit of the series but not its deletion.
+// planned ones (status planned, which by a table check means no fact), from
+// `from_start` on (all of them when it is NULL). Instances that were marked (a
+// status other than planned, except cancelled) are history and are never touched. Detached instances survive an edit of the series but not its deletion.
 // Cancelled ones (deleted occurrences) are kept by an edit, so that they are not
 // created again, and removed together with the series or its tail.
 func (q *Queries) DeleteSeriesInstances(ctx context.Context, arg DeleteSeriesInstancesParams) (int64, error) {

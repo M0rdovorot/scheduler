@@ -37,7 +37,7 @@ type MaterializeInstanceParams struct {
 	OriginalStart *time.Time
 	Title         string
 	Description   string
-	PlannedEnd    time.Time
+	PlannedEnd    *time.Time
 }
 
 // Creates one occurrence; when it exists already (also cancelled) nothing is returned.

@@ -42,6 +42,23 @@ func (q *Queries) ClearInstanceCategories(ctx context.Context, arg ClearInstance
 	return err
 }
 
+const copyInstanceCategories = `-- name: CopyInstanceCategories :exec
+INSERT INTO instance_categories (instance_id, category_id, user_id)
+SELECT $1::uuid, src.category_id, src.user_id FROM instance_categories src
+WHERE src.instance_id = $2 AND src.user_id = $3
+`
+
+type CopyInstanceCategoriesParams struct {
+	ToID   uuid.UUID
+	FromID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) CopyInstanceCategories(ctx context.Context, arg CopyInstanceCategoriesParams) error {
+	_, err := q.db.Exec(ctx, copyInstanceCategories, arg.ToID, arg.FromID, arg.UserID)
+	return err
+}
+
 const countUserCategories = `-- name: CountUserCategories :one
 SELECT count(*) FROM categories
 WHERE user_id = $1 AND id = ANY($2::uuid[])
@@ -69,8 +86,8 @@ type CreateInstanceParams struct {
 	UserID       uuid.UUID
 	Title        string
 	Description  string
-	PlannedStart time.Time
-	PlannedEnd   time.Time
+	PlannedStart *time.Time
+	PlannedEnd   *time.Time
 }
 
 func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) (uuid.UUID, error) {
@@ -80,6 +97,64 @@ func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) 
 		arg.Description,
 		arg.PlannedStart,
 		arg.PlannedEnd,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createRescheduledInstance = `-- name: CreateRescheduledInstance :one
+INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, rescheduled_from_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id
+`
+
+type CreateRescheduledInstanceParams struct {
+	UserID            uuid.UUID
+	Title             string
+	Description       string
+	PlannedStart      *time.Time
+	PlannedEnd        *time.Time
+	RescheduledFromID uuid.NullUUID
+}
+
+func (q *Queries) CreateRescheduledInstance(ctx context.Context, arg CreateRescheduledInstanceParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createRescheduledInstance,
+		arg.UserID,
+		arg.Title,
+		arg.Description,
+		arg.PlannedStart,
+		arg.PlannedEnd,
+		arg.RescheduledFromID,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createUnplannedInstance = `-- name: CreateUnplannedInstance :one
+INSERT INTO task_instances (user_id, title, description, status, actual_start, actual_end)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id
+`
+
+type CreateUnplannedInstanceParams struct {
+	UserID      uuid.UUID
+	Title       string
+	Description string
+	Status      string
+	ActualStart *time.Time
+	ActualEnd   *time.Time
+}
+
+func (q *Queries) CreateUnplannedInstance(ctx context.Context, arg CreateUnplannedInstanceParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createUnplannedInstance,
+		arg.UserID,
+		arg.Title,
+		arg.Description,
+		arg.Status,
+		arg.ActualStart,
+		arg.ActualEnd,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -104,12 +179,7 @@ func (q *Queries) DeleteInstance(ctx context.Context, arg DeleteInstanceParams) 
 }
 
 const getInstance = `-- name: GetInstance :one
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
-       COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
-FROM task_instances ti
-LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
-WHERE ti.id = $1 AND ti.user_id = $2
-GROUP BY ti.id
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details WHERE id = $1 AND user_id = $2
 `
 
 type GetInstanceParams struct {
@@ -117,82 +187,83 @@ type GetInstanceParams struct {
 	UserID uuid.UUID
 }
 
-type GetInstanceRow struct {
-	ID           uuid.UUID
-	Title        string
-	Description  string
-	PlannedStart time.Time
-	PlannedEnd   time.Time
-	Status       string
-	SeriesID     uuid.NullUUID
-	CategoryIds  []uuid.UUID
-}
-
-func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (GetInstanceRow, error) {
+func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (InstanceDetail, error) {
 	row := q.db.QueryRow(ctx, getInstance, arg.ID, arg.UserID)
-	var i GetInstanceRow
+	var i InstanceDetail
 	err := row.Scan(
 		&i.ID,
+		&i.UserID,
 		&i.Title,
 		&i.Description,
 		&i.PlannedStart,
 		&i.PlannedEnd,
+		&i.ActualStart,
+		&i.ActualEnd,
 		&i.Status,
+		&i.Comment,
 		&i.SeriesID,
 		&i.CategoryIds,
+		&i.FromID,
+		&i.FromPlannedStart,
+		&i.FromPlannedEnd,
+		&i.ToID,
+		&i.ToPlannedStart,
+		&i.ToPlannedEnd,
 	)
 	return i, err
 }
 
 const listInstances = `-- name: ListInstances :many
-SELECT ti.id, ti.title, ti.description, ti.planned_start, ti.planned_end, ti.status, ti.series_id,
-       COALESCE(array_agg(ic.category_id ORDER BY ic.category_id) FILTER (WHERE ic.category_id IS NOT NULL), '{}')::uuid[] AS category_ids
-FROM task_instances ti
-LEFT JOIN instance_categories ic ON ic.instance_id = ti.id
-WHERE ti.user_id = $1
-  AND ti.planned_start < $2
-  AND ti.planned_end > $3
-  AND ti.status <> 'cancelled'
-GROUP BY ti.id
-ORDER BY ti.planned_start, ti.id
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details
+WHERE user_id = $1
+  AND status <> 'cancelled'
+  AND ((planned_start < $2 AND planned_end > $3)
+       OR (actual_start < $2 AND COALESCE(actual_end, $4::timestamptz) > $3))
+ORDER BY COALESCE(planned_start, actual_start), id
 `
 
 type ListInstancesParams struct {
 	UserID    uuid.UUID
-	RangeTo   time.Time
-	RangeFrom time.Time
+	RangeTo   *time.Time
+	RangeFrom *time.Time
+	Now       time.Time
 }
 
-type ListInstancesRow struct {
-	ID           uuid.UUID
-	Title        string
-	Description  string
-	PlannedStart time.Time
-	PlannedEnd   time.Time
-	Status       string
-	SeriesID     uuid.NullUUID
-	CategoryIds  []uuid.UUID
-}
-
-// Tasks whose plan overlaps [from, to). Cancelled ones (deleted occurrences of a series) are not part of the plan.
-func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([]ListInstancesRow, error) {
-	rows, err := q.db.Query(ctx, listInstances, arg.UserID, arg.RangeTo, arg.RangeFrom)
+// Tasks whose plan or fact overlaps [from, to). A running timer lasts until `now`.
+// Cancelled ones (deleted occurrences of a series) are not part of the calendar.
+func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([]InstanceDetail, error) {
+	rows, err := q.db.Query(ctx, listInstances,
+		arg.UserID,
+		arg.RangeTo,
+		arg.RangeFrom,
+		arg.Now,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListInstancesRow
+	var items []InstanceDetail
 	for rows.Next() {
-		var i ListInstancesRow
+		var i InstanceDetail
 		if err := rows.Scan(
 			&i.ID,
+			&i.UserID,
 			&i.Title,
 			&i.Description,
 			&i.PlannedStart,
 			&i.PlannedEnd,
+			&i.ActualStart,
+			&i.ActualEnd,
 			&i.Status,
+			&i.Comment,
 			&i.SeriesID,
 			&i.CategoryIds,
+			&i.FromID,
+			&i.FromPlannedStart,
+			&i.FromPlannedEnd,
+			&i.ToID,
+			&i.ToPlannedStart,
+			&i.ToPlannedEnd,
 		); err != nil {
 			return nil, err
 		}
@@ -205,7 +276,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 }
 
 const lockInstance = `-- name: LockInstance :one
-SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached FROM task_instances
+SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached, actual_start, actual_end, comment, rescheduled_from_id FROM task_instances
 WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'
 FOR UPDATE
 `
@@ -232,8 +303,39 @@ func (q *Queries) LockInstance(ctx context.Context, arg LockInstanceParams) (Tas
 		&i.SeriesID,
 		&i.OriginalStart,
 		&i.IsDetached,
+		&i.ActualStart,
+		&i.ActualEnd,
+		&i.Comment,
+		&i.RescheduledFromID,
 	)
 	return i, err
+}
+
+const setTracking = `-- name: SetTracking :exec
+UPDATE task_instances
+SET status = $3, actual_start = $4, actual_end = $5, comment = $6, updated_at = now()
+WHERE id = $1 AND user_id = $2
+`
+
+type SetTrackingParams struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Status      string
+	ActualStart *time.Time
+	ActualEnd   *time.Time
+	Comment     string
+}
+
+func (q *Queries) SetTracking(ctx context.Context, arg SetTrackingParams) error {
+	_, err := q.db.Exec(ctx, setTracking,
+		arg.ID,
+		arg.UserID,
+		arg.Status,
+		arg.ActualStart,
+		arg.ActualEnd,
+		arg.Comment,
+	)
+	return err
 }
 
 const updateInstance = `-- name: UpdateInstance :exec
@@ -248,8 +350,8 @@ type UpdateInstanceParams struct {
 	UserID       uuid.UUID
 	Title        string
 	Description  string
-	PlannedStart time.Time
-	PlannedEnd   time.Time
+	PlannedStart *time.Time
+	PlannedEnd   *time.Time
 	Detach       bool
 }
 

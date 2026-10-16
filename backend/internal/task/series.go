@@ -109,9 +109,10 @@ func insertOccurrences(ctx context.Context, q *store.Queries, userID uuid.UUID, 
 	duration := time.Duration(row.DurationMinutes) * time.Minute
 	params := make([]store.MaterializeInstanceParams, len(starts))
 	for i, start := range starts {
+		end := start.Add(duration)
 		params[i] = store.MaterializeInstanceParams{
 			UserID: userID, SeriesID: uuid.NullUUID{UUID: row.ID, Valid: true}, OriginalStart: &start,
-			Title: row.Title, Description: row.Description, PlannedEnd: start.Add(duration),
+			Title: row.Title, Description: row.Description, PlannedEnd: &end,
 		}
 	}
 
@@ -259,7 +260,10 @@ func seriesTimeChange(cur store.TaskInstance, in UpdateInput, loc *time.Location
 	if in.PlannedStart == nil && in.PlannedEnd == nil {
 		return nil, nil
 	}
-	start, end := cur.PlannedStart, cur.PlannedEnd
+	if cur.PlannedStart == nil || cur.PlannedEnd == nil {
+		return nil, fmt.Errorf("occurrence %s of a series has no plan", cur.ID)
+	}
+	start, end := *cur.PlannedStart, *cur.PlannedEnd
 	if in.PlannedStart != nil {
 		start = *in.PlannedStart
 	}
@@ -270,7 +274,7 @@ func seriesTimeChange(cur store.TaskInstance, in UpdateInput, loc *time.Location
 		return nil, err
 	}
 
-	was, now := recurrence.WallOf(cur.PlannedStart, loc), recurrence.WallOf(start, loc)
+	was, now := recurrence.WallOf(*cur.PlannedStart, loc), recurrence.WallOf(start, loc)
 	if in.PlannedStart != nil && (was.Year() != now.Year() || was.YearDay() != now.YearDay()) {
 		return nil, &validation.Error{
 			Code: CodeSeriesDateChange, Field: "planned_start",

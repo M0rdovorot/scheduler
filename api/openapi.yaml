@@ -13,6 +13,7 @@ tags:
   - name: me
   - name: categories
   - name: tasks
+  - name: tracking
 paths:
   /healthz:
     get:
@@ -376,6 +377,162 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /instances/unplanned:
+    post:
+      operationId: createUnplanned
+      summary: Add a task outside the plan
+      description: |
+        With `actual_start` (and `actual_end`) the task is back-dated and done at once; with
+        no `actual_end` a timer is running from `actual_start` (default: now).
+      tags: [tracking]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnplannedRequest"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /instances/{id}/complete:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    post:
+      operationId: completeInstance
+      summary: "Done in one tap: the fact becomes equal to the plan"
+      description: |
+        Error code `invalid_state`: the task has no plan, or was rescheduled.
+      tags: [tracking]
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /instances/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    post:
+      operationId: startInstance
+      summary: "Start a timer: the fact begins now"
+      description: |
+        Several tasks may run at once. Only a planned or not done task can be started (`invalid_state` otherwise).
+      tags: [tracking]
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /instances/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    post:
+      operationId: stopInstance
+      summary: "Stop the timer: the fact ends now and the task is done"
+      description: |
+        `invalid_state` when the task is not running.
+      tags: [tracking]
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /instances/{id}/tracking:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    patch:
+      operationId: updateTracking
+      summary: Edit the status, the fact and the comment by hand
+      description: |
+        Omitted fields stay as they are. A status of `planned` removes the mark (the fact is
+        cleared, the comment stays); `not_done` clears the fact too. With no status, a given
+        fact decides it: a start alone is `in_progress`, a start and an end is `done`
+        (a `partial` task stays partial). `done` or `partial` with no times take the plan.
+        Rescheduled tasks cannot be changed (`invalid_state`).
+      tags: [tracking]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingPatch"
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /instances/{id}/reschedule:
+    parameters:
+      - $ref: "#/components/parameters/InstanceId"
+    post:
+      operationId: rescheduleInstance
+      summary: Move a task to another time, leaving a trail
+      description: |
+        The original gets the status `rescheduled` and the reason and stays in the calendar;
+        a new one-off task with the same title, description and categories is created at the
+        new time and linked to it. Answers with the new task. Only a planned or not done task
+        can be rescheduled (`invalid_state`).
+      tags: [tracking]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleRequest"
+      responses:
+        "201":
+          description: The new task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Instance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /series/{id}:
     parameters:
       - $ref: "#/components/parameters/SeriesId"
@@ -614,9 +771,50 @@ components:
     InstanceStatus:
       type: string
       enum: [planned, in_progress, done, partial, not_done, rescheduled, cancelled]
+    DeviationKind:
+      type: string
+      enum: [started_late, started_early, finished_late, finished_early, took_longer, took_shorter]
+    Deviation:
+      type: object
+      required: [kind, minutes]
+      description: A difference between plan and fact that reaches the user's threshold.
+      properties:
+        kind:
+          $ref: "#/components/schemas/DeviationKind"
+        minutes:
+          type: integer
+          minimum: 1
+    InstanceLink:
+      type: object
+      required: [id, planned_start, planned_end]
+      description: The other half of a reschedule.
+      properties:
+        id:
+          type: string
+          format: uuid
+        planned_start:
+          type: string
+          format: date-time
+        planned_end:
+          type: string
+          format: date-time
     Instance:
       type: object
-      required: [id, title, description, planned_start, planned_end, status, category_ids, series_id]
+      required:
+        - id
+        - title
+        - description
+        - planned_start
+        - planned_end
+        - actual_start
+        - actual_end
+        - status
+        - comment
+        - category_ids
+        - series_id
+        - rescheduled_from
+        - rescheduled_to
+        - deviations
       properties:
         id:
           type: string
@@ -633,16 +831,98 @@ components:
         planned_start:
           type: string
           format: date-time
+          nullable: true
+          description: Null for a task outside the plan
         planned_end:
           type: string
           format: date-time
+          nullable: true
+        actual_start:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null until the task is started or marked
+        actual_end:
+          type: string
+          format: date-time
+          nullable: true
+          description: Null while a timer is running
         status:
           $ref: "#/components/schemas/InstanceStatus"
+        comment:
+          type: string
         category_ids:
           type: array
           items:
             type: string
             format: uuid
+        rescheduled_from:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/InstanceLink"
+        rescheduled_to:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/InstanceLink"
+        deviations:
+          type: array
+          description: Computed from the plan, the fact and the user's threshold; never stored
+          items:
+            $ref: "#/components/schemas/Deviation"
+    TrackingPatch:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [planned, in_progress, done, partial, not_done]
+        actual_start:
+          type: string
+          format: date-time
+        actual_end:
+          type: string
+          format: date-time
+        comment:
+          type: string
+          maxLength: 2000
+    RescheduleRequest:
+      type: object
+      required: [planned_start, planned_end]
+      properties:
+        planned_start:
+          type: string
+          format: date-time
+        planned_end:
+          type: string
+          format: date-time
+        comment:
+          type: string
+          maxLength: 2000
+          description: The reason, shown on the original
+    UnplannedRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 5000
+        category_ids:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+        actual_start:
+          type: string
+          format: date-time
+          description: Defaults to now
+        actual_end:
+          type: string
+          format: date-time
+          description: Omit to start a timer
     CreateTaskRequest:
       type: object
       required: [title, planned_start, planned_end]
