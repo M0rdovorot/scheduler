@@ -35,9 +35,15 @@ const task = (
   description: '',
   planned_start: start,
   planned_end: end,
+  actual_start: null,
+  actual_end: null,
   status: 'planned',
+  comment: '',
   category_ids: categoryIds,
   series_id: seriesId,
+  rescheduled_from: null,
+  rescheduled_to: null,
+  deviations: [],
 })
 
 const category = (id: string, name: string, color: string): Category => ({
@@ -53,6 +59,80 @@ function server(req: StubRequest): Response {
     return json(200, { token: 't', expires_at: '2030-01-01T00:00:00Z', user })
   }
   const body = (req.body ?? {}) as Partial<Instance>
+  if (req.method === 'POST' && req.path === '/instances/unplanned') {
+    const b = req.body as {
+      title: string
+      category_ids?: string[]
+      actual_start?: string
+      actual_end?: string
+    }
+    const created = {
+      ...task(`u${nextId++}`, b.title, '', ''),
+      planned_start: null,
+      planned_end: null,
+      actual_start: b.actual_start ?? NOW.toISOString(),
+      actual_end: b.actual_end ?? null,
+      status: b.actual_end ? ('done' as const) : ('in_progress' as const),
+      category_ids: b.category_ids ?? [],
+    }
+    instances.push(created)
+    return json(201, created)
+  }
+  const trackingMatch = /^\/instances\/([^/]+)\/(complete|start|stop|tracking|reschedule)$/.exec(
+    req.path,
+  )
+  if (trackingMatch) {
+    const target = instances.find((i) => i.id === trackingMatch[1])
+    if (!target) return json(404, { code: 'not_found', message: 'nf' })
+    switch (trackingMatch[2]) {
+      case 'complete':
+        Object.assign(target, {
+          status: 'done',
+          actual_start: target.planned_start,
+          actual_end: target.planned_end,
+        })
+        return json(200, target)
+      case 'start':
+        Object.assign(target, {
+          status: 'in_progress',
+          actual_start: NOW.toISOString(),
+          actual_end: null,
+        })
+        return json(200, target)
+      case 'stop':
+        Object.assign(target, { status: 'done', actual_end: NOW.toISOString() })
+        return json(200, target)
+      case 'tracking': {
+        const patch = req.body as Partial<Instance>
+        if (patch.status === 'planned')
+          Object.assign(target, { status: 'planned', actual_start: null, actual_end: null })
+        else Object.assign(target, patch)
+        return json(200, target)
+      }
+      case 'reschedule': {
+        const b = req.body as { planned_start: string; planned_end: string; comment?: string }
+        const moved = {
+          ...task(`m${nextId++}`, target.title, b.planned_start, b.planned_end),
+          rescheduled_from: {
+            id: target.id,
+            planned_start: target.planned_start!,
+            planned_end: target.planned_end!,
+          },
+        }
+        Object.assign(target, {
+          status: 'rescheduled',
+          comment: b.comment ?? '',
+          rescheduled_to: {
+            id: moved.id,
+            planned_start: b.planned_start,
+            planned_end: b.planned_end,
+          },
+        })
+        instances.push(moved)
+        return json(201, moved)
+      }
+    }
+  }
   const seriesMatch = /^\/series\/([^/]+)$/.exec(req.path)
   if (req.method === 'GET' && seriesMatch) {
     const found = series[seriesMatch[1]!]
@@ -67,9 +147,17 @@ function server(req: StubRequest): Response {
     const to = new Date(req.query.get('to')!).getTime()
     return json(
       200,
-      instances.filter(
-        (i) => new Date(i.planned_start).getTime() < to && new Date(i.planned_end).getTime() > from,
-      ),
+      instances.filter((i) => {
+        // Like the server: the plan or the fact (a running timer lasts until now) overlaps the window.
+        const plan = i.planned_start
+          ? new Date(i.planned_start).getTime() < to && new Date(i.planned_end!).getTime() > from
+          : false
+        const fact = i.actual_start
+          ? new Date(i.actual_start).getTime() < to &&
+            (i.actual_end ? new Date(i.actual_end) : NOW).getTime() > from
+          : false
+        return plan || fact
+      }),
     )
   }
   if (req.method === 'POST' && req.path === '/tasks') {
@@ -143,7 +231,7 @@ beforeEach(() => {
   net.calls.length = 0
   net.handler = server
   useAuthStore.getState().setToken(null)
-  useCalendarStore.setState({ view: null, anchor: null })
+  useCalendarStore.setState({ view: null, anchor: null, mode: 'both' })
 })
 
 afterEach(() => {
@@ -706,6 +794,415 @@ describe('calendar', () => {
       instances = [{ ...occurrence(), id: 'new-id' }]
       await ui.click(screen.getByRole('radio', { name: '3 дня' }))
       await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
+  })
+
+  describe('tracking', () => {
+    // 12:00 in Moscow. The plan below (09:00-10:00) is in the past.
+    const past = (id: string, over: Partial<Instance> = {}): Instance => ({
+      ...task(id, 'Спорт', '2026-10-14T06:00:00Z', '2026-10-14T07:00:00Z'),
+      ...over,
+    })
+    const doneLate = (id: string): Instance =>
+      past(id, {
+        status: 'done',
+        actual_start: '2026-10-14T06:20:00Z',
+        actual_end: '2026-10-14T07:30:00Z',
+        deviations: [
+          { kind: 'started_late', minutes: 20 },
+          { kind: 'finished_late', minutes: 30 },
+        ],
+      })
+    const unplanned = (): Instance => ({
+      ...task('free', 'Звонок', '', ''),
+      planned_start: null,
+      planned_end: null,
+      status: 'done',
+      actual_start: '2026-10-14T05:00:00Z',
+      actual_end: '2026-10-14T05:30:00Z',
+    })
+    const blocksOf = (kind?: string) =>
+      [...document.querySelectorAll('[data-task]')].filter(
+        (b) => !kind || b.getAttribute('data-kind') === kind,
+      )
+
+    it('offers plan, fact and both for a day, and the plan and fact only for a week', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      const modes = async () =>
+        within(await screen.findByRole('radiogroup', { name: 'Что показывать' }))
+          .getAllByRole('radio')
+          .map((r) => r.textContent)
+      expect(await modes()).toEqual(['План', 'Факт', 'Оба'])
+      await ui.click(screen.getByRole('radio', { name: '3 дня' }))
+      expect(await modes()).toEqual(['План', 'Факт', 'Оба'])
+      await ui.click(screen.getByRole('radio', { name: 'Неделя' }))
+      expect(await modes()).toEqual(['План', 'Факт'])
+    })
+
+    it('falls back to the plan in a week and remembers "both" for the other views', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      const group = async () =>
+        within(await screen.findByRole('radiogroup', { name: 'Что показывать' }))
+      expect((await group()).getByRole('radio', { name: 'Оба' }).getAttribute('aria-checked')).toBe(
+        'true',
+      )
+
+      await ui.click(screen.getByRole('radio', { name: 'Неделя' }))
+      expect(
+        (await group()).getByRole('radio', { name: 'План' }).getAttribute('aria-checked'),
+      ).toBe('true')
+
+      await ui.click(screen.getByRole('radio', { name: 'День' }))
+      expect((await group()).getByRole('radio', { name: 'Оба' }).getAttribute('aria-checked')).toBe(
+        'true',
+      )
+    })
+
+    it('draws the plan with the fact as a stripe in "both", by default', async () => {
+      instances = [doneLate('t1'), unplanned()]
+      renderCalendar()
+      await screen.findByRole('button', { name: /Спорт/ })
+
+      const plan = blocksOf('plan')
+      expect(plan).toHaveLength(1)
+      expect(document.querySelector('[data-fact-stripe="t1"]')).toBeTruthy()
+      // The task outside the plan is drawn by its fact, hatched.
+      expect(blocksOf('unplanned')).toHaveLength(1)
+      expect((blocksOf('unplanned')[0] as HTMLElement).style.background).toContain(
+        'repeating-linear-gradient',
+      )
+    })
+
+    it('"Plan" hides the fact and the unplanned tasks; "Fact" draws by the fact', async () => {
+      const ui = userEvent.setup()
+      instances = [doneLate('t1'), unplanned()]
+      renderCalendar()
+      await screen.findByRole('button', { name: /Спорт/ })
+
+      await ui.click(screen.getByRole('radio', { name: 'План' }))
+      expect(blocksOf().map((b) => b.getAttribute('data-kind'))).toEqual(['plan'])
+      expect(document.querySelector('[data-fact-stripe]')).toBeNull()
+
+      await ui.click(screen.getByRole('radio', { name: 'Факт' }))
+      expect(
+        blocksOf()
+          .map((b) => b.getAttribute('data-kind'))
+          .sort(),
+      ).toEqual(['fact', 'unplanned'])
+      expect(document.querySelector('[data-fact-stripe]')).toBeNull()
+      // The fact block starts at 09:20 (06:20 UTC), not at the planned 09:00.
+      const factBlock = blocksOf('fact')[0] as HTMLElement
+      expect(factBlock.style.top).toBe(`${(560 * 28) / 30}px`)
+      expect(factBlock.getAttribute('aria-label')).toContain('09:20–10:30')
+    })
+
+    it('marks statuses, a rescheduled original and a past task nobody marked', async () => {
+      instances = [
+        doneLate('d'),
+        past('n', {
+          title: 'Забыл',
+          planned_start: '2026-10-14T03:00:00Z',
+          planned_end: '2026-10-14T04:00:00Z',
+        }),
+        past('r', {
+          title: 'Перенёс',
+          status: 'rescheduled',
+          planned_start: '2026-10-14T00:00:00Z',
+          planned_end: '2026-10-14T01:00:00Z',
+        }),
+        task('f', 'Позже', '2026-10-14T15:00:00Z', '2026-10-14T16:00:00Z'),
+      ]
+      renderCalendar()
+      await screen.findByRole('button', { name: /Забыл/ })
+
+      const find = (title: string) => screen.getByRole('button', { name: new RegExp(title) })
+      expect(find('Спорт').querySelector('[data-mark]')?.textContent).toBe('✓')
+      expect(find('Забыл').getAttribute('data-unmarked')).toBe('true')
+      expect(find('Забыл').querySelector('[data-unmarked-mark]')).toBeTruthy()
+      expect(find('Перенёс').getAttribute('data-status')).toBe('rescheduled')
+      expect(find('Перенёс').className).toContain('opacity-50')
+      // A task that is still ahead is not "unmarked".
+      expect(find('Позже').getAttribute('data-unmarked')).toBeNull()
+    })
+
+    it('marks a task done with one tap and closes the card', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+      expect(card.getByTestId('status').textContent).toMatch(/Запланировано/)
+      expect(card.getByText('не отмечено')).toBeTruthy()
+
+      await ui.click(card.getByRole('button', { name: 'Выполнено' }))
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(mutations()).toMatchObject([{ method: 'POST', path: '/instances/t1/complete' }])
+      expect(await screen.findByRole('button', { name: /Спорт.*Выполнено/ })).toBeTruthy()
+    })
+
+    it('starts and stops a timer', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      await ui.click(within(await dialog()).getByRole('button', { name: 'Старт' }))
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+      await ui.click(await screen.findByRole('button', { name: /Спорт.*В процессе/ }))
+      const card = within(await dialog())
+      expect(card.getByTestId('fact').textContent).toMatch(/с 12:00, идёт/)
+      expect(card.queryByRole('button', { name: 'Старт' })).toBeNull()
+      await ui.click(card.getByRole('button', { name: 'Стоп' }))
+
+      await vi.waitFor(() =>
+        expect(mutations().map((m) => m.path)).toEqual([
+          '/instances/t1/start',
+          '/instances/t1/stop',
+        ]),
+      )
+    })
+
+    it('shows the plan, the fact and the deviations of a finished task', async () => {
+      const ui = userEvent.setup()
+      instances = [doneLate('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+
+      expect(card.getByTestId('fact').textContent).toBe('09:20–10:30')
+      expect(card.getByRole('list', { name: 'Отклонения' }).textContent).toContain(
+        'Начали позже на 20 мин',
+      )
+      expect(card.getByRole('list', { name: 'Отклонения' }).textContent).toContain(
+        'Закончили позже на 30 мин (затянулось)',
+      )
+      // A marked task cannot be completed again, but its mark can be removed.
+      expect(card.queryByRole('button', { name: 'Выполнено' })).toBeNull()
+      await ui.click(card.getByRole('button', { name: 'Снять отметку' }))
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        method: 'PATCH',
+        path: '/instances/t1/tracking',
+        body: { status: 'planned' },
+      })
+    })
+
+    it('edits the fact by hand, sending only what changed', async () => {
+      const ui = userEvent.setup()
+      instances = [doneLate('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+
+      await ui.click(card.getByRole('button', { name: 'Править факт' }))
+      expect((card.getByLabelText('Начало факта') as HTMLInputElement).value).toBe(
+        '2026-10-14T09:20',
+      )
+      fireEvent.change(card.getByLabelText('Конец факта'), {
+        target: { value: '2026-10-14T10:45' },
+      })
+      await ui.selectOptions(card.getByLabelText('Статус'), 'partial')
+      await ui.click(card.getByRole('button', { name: 'Сохранить факт' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]?.body).toEqual({
+        status: 'partial',
+        actual_end: '2026-10-14T07:45:00.000Z',
+      })
+    })
+
+    it('refuses a fact that ends before it starts', async () => {
+      const ui = userEvent.setup()
+      instances = [doneLate('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+      await ui.click(card.getByRole('button', { name: 'Править факт' }))
+      fireEvent.change(card.getByLabelText('Конец факта'), {
+        target: { value: '2026-10-14T09:00' },
+      })
+
+      expect(card.getByText('Конец должен быть позже начала')).toBeTruthy()
+      expect(
+        (card.getByRole('button', { name: 'Сохранить факт' }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+    })
+
+    it('saves a comment on its own, without marking the task', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+
+      const save = card.getByRole('button', { name: 'Сохранить комментарий' }) as HTMLButtonElement
+      expect(save.disabled).toBe(true)
+      await ui.type(card.getByLabelText(/Комментарий/), 'заболел')
+      await ui.click(save)
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]?.body).toEqual({ comment: 'заболел' })
+    })
+
+    it('reschedules with a suggested time and a reason, leaving a trail', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      await ui.click(within(await dialog()).getByRole('button', { name: 'Перенести' }))
+
+      const form = within(await screen.findByRole('dialog', { name: 'Перенести дело' }))
+      // The same time the next day.
+      expect((form.getByLabelText('Новое начало') as HTMLInputElement).value).toBe(
+        '2026-10-15T09:00',
+      )
+      expect((form.getByLabelText('Новый конец') as HTMLInputElement).value).toBe(
+        '2026-10-15T10:00',
+      )
+      await ui.type(form.getByLabelText('Причина'), 'совещание')
+      await ui.click(form.getByRole('button', { name: 'Перенести' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        method: 'POST',
+        path: '/instances/t1/reschedule',
+        body: {
+          planned_start: '2026-10-15T06:00:00.000Z',
+          planned_end: '2026-10-15T07:00:00.000Z',
+          comment: 'совещание',
+        },
+      })
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      // The original stays, muted, with the status "rescheduled".
+      expect(
+        (await screen.findByRole('button', { name: /Спорт.*Перенесено/ })).getAttribute(
+          'data-status',
+        ),
+      ).toBe('rescheduled')
+    })
+
+    it('links a rescheduled task to where it went and jumps there', async () => {
+      const ui = userEvent.setup()
+      instances = [
+        past('t1', {
+          status: 'rescheduled',
+          rescheduled_to: {
+            id: 'n1',
+            planned_start: '2026-10-16T06:00:00Z',
+            planned_end: '2026-10-16T07:00:00Z',
+          },
+        }),
+      ]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+
+      expect(card.getByText(/Перенесено на/)).toBeTruthy()
+      // Nothing can be done with a rescheduled task but read it.
+      for (const name of ['Выполнено', 'Старт', 'Перенести', 'Снять отметку', 'Править факт']) {
+        expect(card.queryByRole('button', { name })).toBeNull()
+      }
+      await ui.click(card.getByRole('button', { name: 'Перейти' }))
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(column('2026-10-16')).toBeTruthy()
+    })
+
+    it('warns that deleting a marked task drops its fact, and asks before deleting', async () => {
+      const ui = userEvent.setup()
+      instances = [doneLate('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      await ui.click(within(await dialog()).getByRole('button', { name: 'Удалить' }))
+
+      const confirm = within(await screen.findByRole('dialog', { name: 'Удалить дело?' }))
+      expect(confirm.getByTestId('marked-warning').textContent).toMatch(
+        /вместе с фактом.*статистики/,
+      )
+      expect(mutations()).toEqual([])
+      await ui.click(confirm.getByRole('button', { name: 'Удалить' }))
+      await vi.waitFor(() =>
+        expect(mutations()).toMatchObject([{ method: 'DELETE', path: '/instances/t1' }]),
+      )
+    })
+
+    it('gives no such warning for a task that was not marked', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1')]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      await ui.click(within(await dialog()).getByRole('button', { name: 'Удалить' }))
+      const confirm = within(await screen.findByRole('dialog', { name: 'Удалить дело?' }))
+      expect(confirm.queryByTestId('marked-warning')).toBeNull()
+    })
+
+    it('starts a timer for a task outside the plan from the menu', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: 'Меню' }))
+      await ui.click(screen.getByRole('button', { name: 'Дело вне плана' }))
+
+      const form = within(await dialog())
+      expect(form.queryByLabelText('Началось')).toBeNull()
+      expect((form.getByRole('button', { name: 'Запустить' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      )
+      await ui.type(form.getByLabelText('Название'), 'Вдруг')
+      await ui.click(form.getByRole('button', { name: 'Запустить' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        method: 'POST',
+        path: '/instances/unplanned',
+        body: { title: 'Вдруг', category_ids: [] },
+      })
+      expect(Object.keys(mutations()[0]!.body as object)).not.toContain('actual_start')
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(await screen.findByRole('button', { name: /Вдруг/ })).toBeTruthy()
+    })
+
+    it('adds a task outside the plan back-dated, with its fact', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: 'Меню' }))
+      await ui.click(screen.getByRole('button', { name: 'Дело вне плана' }))
+      const form = within(await dialog())
+
+      await ui.type(form.getByLabelText('Название'), 'Звонок маме')
+      await ui.click(form.getByLabelText('Добавить задним числом'))
+      expect((form.getByLabelText('Началось') as HTMLInputElement).value).toBe('2026-10-14T11:30')
+      expect((form.getByLabelText('Закончилось') as HTMLInputElement).value).toBe(
+        '2026-10-14T12:00',
+      )
+      await ui.click(form.getByRole('button', { name: 'Добавить' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]?.body).toEqual({
+        title: 'Звонок маме',
+        category_ids: [],
+        actual_start: '2026-10-14T08:30:00.000Z',
+        actual_end: '2026-10-14T09:00:00.000Z',
+      })
+    })
+
+    it('edits a task outside the plan without planned times', async () => {
+      const ui = userEvent.setup()
+      instances = [unplanned()]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Звонок/ }))
+      const card = within(await dialog())
+
+      expect(card.getByText('вне плана')).toBeTruthy()
+      expect(card.queryByLabelText('Начало')).toBeNull()
+      expect(card.queryByRole('button', { name: 'Выполнено' })).toBeNull()
+      expect(card.queryByRole('button', { name: 'Перенести' })).toBeNull()
+      expect(card.queryByRole('button', { name: 'Снять отметку' })).toBeNull()
+      await ui.clear(card.getByLabelText('Название'))
+      await ui.type(card.getByLabelText('Название'), 'Звонок маме')
+      await ui.click(card.getByRole('button', { name: 'Сохранить' }))
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]?.body).toEqual({ title: 'Звонок маме' })
     })
   })
 })

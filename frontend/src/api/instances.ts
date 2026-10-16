@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import { ApiError, unwrap } from './errors'
-import type { CreateTaskRequest, Scope, UpdateInstanceRequest } from './types'
+import type { CreateTaskRequest, Scope, TrackingPatch, UpdateInstanceRequest } from './types'
 
 export const instancesKey = ['instances'] as const
 
@@ -87,4 +87,64 @@ export function useSeries(id: string | null) {
     queryFn: async () => unwrap(await api.GET('/series/{id}', { params: { path: { id: id! } } })),
     enabled: id !== null,
   })
+}
+
+/** A tracking action that refreshes the calendar afterwards, whatever the outcome. */
+function useTrackingMutation<TVars>(fn: (vars: TVars) => Promise<unknown>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: instancesKey }),
+  })
+}
+
+/** "Done" in one tap: the fact becomes equal to the plan. */
+export function useCompleteInstance() {
+  return useTrackingMutation(async (id: string) =>
+    unwrap(await api.POST('/instances/{id}/complete', { params: { path: { id } } })),
+  )
+}
+
+export function useStartInstance() {
+  return useTrackingMutation(async (id: string) =>
+    unwrap(await api.POST('/instances/{id}/start', { params: { path: { id } } })),
+  )
+}
+
+export function useStopInstance() {
+  return useTrackingMutation(async (id: string) =>
+    unwrap(await api.POST('/instances/{id}/stop', { params: { path: { id } } })),
+  )
+}
+
+export function useUpdateTracking() {
+  return useTrackingMutation(async ({ id, ...body }: { id: string } & TrackingPatch) =>
+    unwrap(await api.PATCH('/instances/{id}/tracking', { params: { path: { id } }, body })),
+  )
+}
+
+export function useRescheduleInstance() {
+  return useTrackingMutation(
+    async ({
+      id,
+      ...body
+    }: {
+      id: string
+      planned_start: string
+      planned_end: string
+      comment?: string
+    }) => unwrap(await api.POST('/instances/{id}/reschedule', { params: { path: { id } }, body })),
+  )
+}
+
+export function useCreateUnplanned() {
+  return useTrackingMutation(
+    async (body: {
+      title: string
+      description?: string
+      category_ids?: string[]
+      actual_start?: string
+      actual_end?: string
+    }) => unwrap(await api.POST('/instances/unplanned', { body })),
+  )
 }

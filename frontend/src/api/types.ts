@@ -11,3 +11,7 @@ export type CreateTaskRequest = components['schemas']['CreateTaskRequest']
 export type UpdateInstanceRequest = components['schemas']['UpdateInstanceRequest']
 export type Series = components['schemas']['Series']
 export type Scope = 'this' | 'following' | 'all'
+export type Deviation = components['schemas']['Deviation']
+export type InstanceStatus = components['schemas']['InstanceStatus']
+export type InstanceLink = components['schemas']['InstanceLink']
+export type TrackingPatch = components['schemas']['TrackingPatch']

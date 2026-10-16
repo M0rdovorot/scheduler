@@ -46,3 +46,8 @@ export function formatTimeRange(start: Date, end: Date, tz: string): string {
   }
   return `${date.format(start)}, ${time.format(start)} – ${date.format(end)}, ${time.format(end)}`
 }
+
+/** "10:20" in the time zone. */
+export function formatTime(instant: Date, tz: string): string {
+  return timeFormat(tz).format(instant)
+}

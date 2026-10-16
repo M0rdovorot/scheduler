@@ -7,7 +7,11 @@ import { CategoryPicker } from '@/features/categories/CategoryPicker'
 import { RepeatEditor } from '@/features/recurrence/RepeatEditor'
 import { describeRepeat, fromRRule } from '@/features/recurrence/repeat'
 import { ScopeDialog, type ScopeOption } from '@/features/recurrence/ScopeDialog'
+import { statusLabels } from '@/features/tracking/fact'
+import { RescheduleDialog } from '@/features/tracking/RescheduleDialog'
+import { TrackingPanel } from '@/features/tracking/TrackingPanel'
 import { usePlatform } from '@/platform/context'
+import type { Day } from './dates'
 import { formatTimeRange, fromLocalInput, toLocalInput } from './localTime'
 import { taskErrorMessage } from './messages'
 import {
@@ -29,6 +33,10 @@ interface TaskFormProps {
   instances: readonly Instance[]
   categories: readonly Category[]
   tz: string
+  /** The current time, for "not marked" and for a running timer. */
+  now: Date
+  /** Jumps to a day (the links between a task and its reschedule). */
+  onGoToDay: (day: Day) => void
   onClose: () => void
 }
 
@@ -40,7 +48,15 @@ const fieldClass = 'mt-1 w-full rounded-xl border border-separator bg-surface px
  * an occurrence of a series that also happens after the series is rewritten, when
  * its occurrences are created again with new ids).
  */
-export function TaskForm({ target, instances, categories, tz, onClose }: TaskFormProps) {
+export function TaskForm({
+  target,
+  instances,
+  categories,
+  tz,
+  now,
+  onGoToDay,
+  onClose,
+}: TaskFormProps) {
   const editing = target.mode === 'edit' ? instances.find((i) => i.id === target.id) : undefined
   const gone = target.mode === 'edit' && !editing
   const series = useSeries(editing?.series_id ?? null)
@@ -73,6 +89,8 @@ export function TaskForm({ target, instances, categories, tz, onClose }: TaskFor
       startCompact={target.mode === 'create' && target.compact}
       categories={categories}
       tz={tz}
+      now={now}
+      onGoToDay={onGoToDay}
       onClose={onClose}
     />
   )
@@ -85,6 +103,8 @@ interface TaskFormBodyProps {
   startCompact: boolean
   categories: readonly Category[]
   tz: string
+  now: Date
+  onGoToDay: (day: Day) => void
   onClose: () => void
 }
 
@@ -95,6 +115,8 @@ function TaskFormBody({
   startCompact,
   categories,
   tz,
+  now,
+  onGoToDay,
   onClose,
 }: TaskFormBodyProps) {
   const platform = usePlatform()
@@ -115,17 +137,20 @@ function TaskFormBody({
   const [compact, setCompact] = useState(startCompact)
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'save-scope' | 'delete' | null>(null)
+  const [dialog, setDialog] = useState<'save-scope' | 'delete' | 'reschedule' | null>(null)
 
   const inSeries = editing?.series_id != null
-  const errors = validateTaskDraft(draft, tz)
+  // A task outside the plan has a title, description and categories, but no planned time.
+  const unplanned = editing !== undefined && editing.planned_start === null
+  const errors = validateTaskDraft(draft, tz, !unplanned)
   const patch = editing ? toUpdateRequest(editing, draft, tz, savedRepeat) : null
   const busy = create.isPending || update.isPending || remove.isPending
   // A new rule needs the series and a new date needs this occurrence alone: both at once fit nothing.
   const ruleChanged = patch?.recurrence !== undefined
-  const dateChanged = editing
-    ? dayOf(draft.start) !== dayOf(toLocalInput(new Date(editing.planned_start), tz))
-    : false
+  const dateChanged =
+    editing?.planned_start != null
+      ? dayOf(draft.start) !== dayOf(toLocalInput(new Date(editing.planned_start), tz))
+      : false
   const conflict = inSeries && ruleChanged && dateChanged
   const canSave =
     Object.keys(errors).length === 0 &&
@@ -193,9 +218,28 @@ function TaskFormBody({
 
   const showRepeat = !compact && (!editing || inSeries)
 
+  // A task with a status other than planned carries a fact; deleting it drops the fact too.
+  const marked = editing !== undefined && editing.status !== 'planned'
+  const markedWarning = editing
+    ? `Дело отмечено («${statusLabels[editing.status]}»). Оно будет удалено вместе с фактом и пропадёт из статистики.`
+    : ''
+
   return (
     <>
       <Dialog title={editing ? 'Дело' : 'Новое дело'} onClose={onClose}>
+        {editing && (
+          <TrackingPanel
+            instance={editing}
+            tz={tz}
+            now={now}
+            onClose={onClose}
+            onReschedule={() => setDialog('reschedule')}
+            onGoToDay={(day) => {
+              onGoToDay(day)
+              onClose()
+            }}
+          />
+        )}
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block">
@@ -236,27 +280,33 @@ function TaskFormBody({
                 )}
               </label>
 
-              <label className="block">
-                <span>Начало</span>
-                <input
-                  type="datetime-local"
-                  className={fieldClass}
-                  value={draft.start}
-                  onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-                />
-                {errors.start && <span className="block text-sm text-danger">{errors.start}</span>}
-              </label>
+              {!unplanned && (
+                <>
+                  <label className="block">
+                    <span>Начало</span>
+                    <input
+                      type="datetime-local"
+                      className={fieldClass}
+                      value={draft.start}
+                      onChange={(e) => setDraft({ ...draft, start: e.target.value })}
+                    />
+                    {errors.start && (
+                      <span className="block text-sm text-danger">{errors.start}</span>
+                    )}
+                  </label>
 
-              <label className="block">
-                <span>Конец</span>
-                <input
-                  type="datetime-local"
-                  className={fieldClass}
-                  value={draft.end}
-                  onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-                />
-                {errors.end && <span className="block text-sm text-danger">{errors.end}</span>}
-              </label>
+                  <label className="block">
+                    <span>Конец</span>
+                    <input
+                      type="datetime-local"
+                      className={fieldClass}
+                      value={draft.end}
+                      onChange={(e) => setDraft({ ...draft, end: e.target.value })}
+                    />
+                    {errors.end && <span className="block text-sm text-danger">{errors.end}</span>}
+                  </label>
+                </>
+              )}
 
               {showRepeat && !ruleUnsupported && (
                 <RepeatEditor
@@ -354,6 +404,11 @@ function TaskFormBody({
           onConfirm={() => void run(() => remove.mutateAsync({ id: editing.id }), setDeleteError)}
         >
           <p>Дело «{editing.title}» будет удалено.</p>
+          {marked && (
+            <p className="mt-2" data-testid="marked-warning">
+              {markedWarning}
+            </p>
+          )}
         </ConfirmDialog>
       )}
 
@@ -361,6 +416,7 @@ function TaskFormBody({
         <ScopeDialog
           title="Удалить повторяющееся дело"
           options={deleteOptions}
+          note={marked ? `${markedWarning} Это относится к выбранному делу.` : undefined}
           danger
           pending={remove.isPending}
           error={deleteError}
@@ -371,6 +427,15 @@ function TaskFormBody({
             setDialog(null)
             setDeleteError(null)
           }}
+        />
+      )}
+
+      {editing && dialog === 'reschedule' && (
+        <RescheduleDialog
+          instance={editing}
+          tz={tz}
+          onDone={onClose}
+          onCancel={() => setDialog(null)}
         />
       )}
     </>

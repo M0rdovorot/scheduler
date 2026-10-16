@@ -3,6 +3,8 @@ import { useCategories } from '@/api/categories'
 import { useInstances } from '@/api/instances'
 import { useMe } from '@/api/me'
 import type { Category } from '@/api/types'
+import { UnplannedDialog } from '@/features/tracking/UnplannedDialog'
+import { effectiveMode } from './blocks'
 import { CalendarHeader } from './CalendarHeader'
 import { useCalendarStore } from './calendarStore'
 import { dayRange, rangeLabel, shiftAnchor, todayIn, visibleDays, type Day } from './dates'
@@ -36,15 +38,25 @@ interface CalendarProps {
 function Calendar({ tz, slot, defaultView }: CalendarProps) {
   const now = useNow()
   const today = todayIn(tz, now)
-  const { view: chosenView, anchor: chosenAnchor, setView, setAnchor } = useCalendarStore()
+  const {
+    view: chosenView,
+    anchor: chosenAnchor,
+    mode: chosenMode,
+    setView,
+    setAnchor,
+    setMode,
+  } = useCalendarStore()
   const view = chosenView ?? defaultView
   const anchor = chosenAnchor ?? today
+  // In the week view "both" is shown as the plan; the choice itself is kept for the other views.
+  const mode = effectiveMode(chosenMode, view)
 
   const days = useMemo(() => visibleDays(view, anchor), [view, anchor])
   const { from, to } = useMemo(() => dayRange(days, tz), [days, tz])
   const instances = useInstances(from, to)
   const categories = useCategories()
   const [target, setTarget] = useState<TaskFormTarget | null>(null)
+  const [unplannedOpen, setUnplannedOpen] = useState(false)
 
   const categoriesById = useMemo(
     () => new Map<string, Category>((categories.data ?? []).map((c) => [c.id, c])),
@@ -68,6 +80,9 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         onPickDay={setAnchor}
         view={view}
         onViewChange={setView}
+        mode={mode}
+        onModeChange={setMode}
+        onUnplanned={() => setUnplannedOpen(true)}
         onPrev={() => setAnchor(shiftAnchor(view, anchor, -1))}
         onNext={() => setAnchor(shiftAnchor(view, anchor, 1))}
         onToday={() => setAnchor(null)}
@@ -88,6 +103,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         now={now}
         tz={tz}
         slot={slot}
+        mode={mode}
         instances={instances.data ?? []}
         categoriesById={categoriesById}
         onSelect={openSelection}
@@ -119,7 +135,22 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
           instances={instances.data ?? []}
           categories={categories.data ?? []}
           tz={tz}
+          now={now}
+          onGoToDay={(day) => {
+            setAnchor(day)
+            setView('day')
+          }}
           onClose={closeForm}
+        />
+      )}
+
+      {unplannedOpen && (
+        <UnplannedDialog
+          categories={categories.data ?? []}
+          tz={tz}
+          now={now}
+          onDone={() => setUnplannedOpen(false)}
+          onCancel={() => setUnplannedOpen(false)}
         />
       )}
     </div>

@@ -1,17 +1,21 @@
 import { useMemo, useRef } from 'react'
 import type { Category, Instance, SlotMinutes } from '@/api/types'
-import { primaryCategory, noCategoryColor } from './categoryColor'
+import { isUnmarked } from '@/features/tracking/fact'
+import { blocksForDay, type ShowMode } from './blocks'
+import { noCategoryColor, primaryCategory } from './categoryColor'
 import type { Day } from './dates'
 import { EventBlock } from './EventBlock'
 import { dayHeightPx, formatMinutes, minBlockMinutes, pxPerMinute, slotBackground } from './grid'
 import { layoutColumns } from './layout'
-import { minutesPerDay, segmentOnDay } from './segments'
+import { minutesPerDay } from './segments'
 import { useSlotSelection, type SlotSelection } from './useSlotSelection'
 
 interface DayColumnProps {
   day: Day
   tz: string
   slot: SlotMinutes
+  mode: ShowMode
+  now: Date
   instances: readonly Instance[]
   categoriesById: ReadonlyMap<string, Category>
   /** Minutes from midnight of this day for the "now" line; null on other days. */
@@ -29,6 +33,8 @@ export function DayColumn({
   day,
   tz,
   slot,
+  mode,
+  now,
   instances,
   categoriesById,
   nowMin,
@@ -45,36 +51,20 @@ export function DayColumn({
     onFinish: (range) => onSelect(day, range),
   })
 
-  const blocks = useMemo(() => {
-    const segments = instances.flatMap((instance) => {
-      const seg = segmentOnDay(
-        new Date(instance.planned_start),
-        new Date(instance.planned_end),
-        day,
-        tz,
-      )
-      if (!seg) return []
-      // Very short tasks are drawn taller so that they can still be tapped.
-      const visualEnd = Math.min(
-        minutesPerDay,
-        Math.max(seg.endMin, seg.startMin + minBlockMinutes),
-      )
-      return [{ instance, seg, visualEnd }]
-    })
+  const placed = useMemo(() => {
+    // Very short tasks are drawn taller so that they can still be tapped.
+    const visualEnd = (b: { seg: { startMin: number; endMin: number } }) =>
+      Math.min(minutesPerDay, Math.max(b.seg.endMin, b.seg.startMin + minBlockMinutes))
+    const blocks = blocksForDay(instances, day, tz, mode, now)
     const placement = layoutColumns(
-      segments.map(({ instance, seg, visualEnd }) => ({
-        id: instance.id,
-        startMin: seg.startMin,
-        endMin: visualEnd,
-      })),
+      blocks.map((b) => ({ id: b.key, startMin: b.seg.startMin, endMin: visualEnd(b) })),
     )
-    return segments.map(({ instance, seg, visualEnd }) => ({
-      instance,
-      seg,
-      visualEnd,
-      place: placement.get(instance.id) ?? { column: 0, columns: 1 },
+    return blocks.map((block) => ({
+      block,
+      visualEnd: visualEnd(block),
+      place: placement.get(block.key) ?? { column: 0, columns: 1 },
     }))
-  }, [instances, day, tz])
+  }, [instances, day, tz, mode, now])
 
   return (
     <div
@@ -84,25 +74,39 @@ export function DayColumn({
       style={{ height: dayHeightPx(slot), ...slotBackground(slot, lineColor, hourLineColor) }}
       {...handlers}
     >
-      {blocks.map(({ instance, seg, visualEnd, place }) => {
-        const category = primaryCategory(instance.category_ids, categoriesById)
+      {placed.map(({ block, visualEnd, place }) => {
+        const { instance, stripe } = block
+        const color =
+          primaryCategory(instance.category_ids, categoriesById)?.color ?? noCategoryColor
+        const left = `calc(${(place.column / place.columns) * 100}% + 1px)`
         return (
-          <EventBlock
-            key={instance.id}
-            instance={instance}
-            title={instance.title}
-            color={category?.color ?? noCategoryColor}
-            top={seg.startMin * ppm}
-            height={(visualEnd - seg.startMin) * ppm}
-            column={place.column}
-            columns={place.columns}
-            startMin={seg.startMin}
-            endMin={seg.endMin}
-            continuesBefore={seg.continuesBefore}
-            continuesAfter={seg.continuesAfter}
-            dense={dense}
-            onOpen={onOpen}
-          />
+          <div key={`${block.kind}-${block.key}`}>
+            <EventBlock
+              block={block}
+              color={color}
+              top={block.seg.startMin * ppm}
+              height={(visualEnd - block.seg.startMin) * ppm}
+              column={place.column}
+              columns={place.columns}
+              unmarked={block.kind === 'plan' && isUnmarked(instance, now)}
+              dense={dense}
+              onOpen={onOpen}
+            />
+            {stripe && (
+              <span
+                aria-hidden="true"
+                data-fact-stripe={instance.id}
+                className={`pointer-events-none absolute z-[5] w-[5px] rounded-sm ${instance.status === 'in_progress' ? 'animate-pulse' : ''}`}
+                style={{
+                  top: stripe.startMin * ppm,
+                  height: Math.max((stripe.endMin - stripe.startMin) * ppm, 3),
+                  left,
+                  background: color,
+                  boxShadow: '0 0 0 1px var(--app-bg)',
+                }}
+              />
+            )}
+          </div>
         )
       })}
 

@@ -275,6 +275,144 @@ export interface paths {
         patch: operations["updateInstance"];
         trace?: never;
     };
+    "/instances/unplanned": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a task outside the plan
+         * @description With `actual_start` (and `actual_end`) the task is back-dated and done at once; with
+         *     no `actual_end` a timer is running from `actual_start` (default: now).
+         */
+        post: operations["createUnplanned"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Done in one tap: the fact becomes equal to the plan
+         * @description Error code `invalid_state`: the task has no plan, or was rescheduled.
+         */
+        post: operations["completeInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a timer: the fact begins now
+         * @description Several tasks may run at once. Only a planned or not done task can be started (`invalid_state` otherwise).
+         */
+        post: operations["startInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop the timer: the fact ends now and the task is done
+         * @description `invalid_state` when the task is not running.
+         */
+        post: operations["stopInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit the status, the fact and the comment by hand
+         * @description Omitted fields stay as they are. A status of `planned` removes the mark (the fact is
+         *     cleared, the comment stays); `not_done` clears the fact too. With no status, a given
+         *     fact decides it: a start alone is `in_progress`, a start and an end is `done`
+         *     (a `partial` task stays partial). `done` or `partial` with no times take the plan.
+         *     Rescheduled tasks cannot be changed (`invalid_state`).
+         */
+        patch: operations["updateTracking"];
+        trace?: never;
+    };
+    "/instances/{id}/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a task to another time, leaving a trail
+         * @description The original gets the status `rescheduled` and the reason and stays in the calendar;
+         *     a new one-off task with the same title, description and categories is created at the
+         *     new time and linked to it. Answers with the new task. Only a planned or not done task
+         *     can be rescheduled (`invalid_state`).
+         */
+        post: operations["rescheduleInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/series/{id}": {
         parameters: {
             query?: never;
@@ -396,6 +534,22 @@ export interface components {
         };
         /** @enum {string} */
         InstanceStatus: "planned" | "in_progress" | "done" | "partial" | "not_done" | "rescheduled" | "cancelled";
+        /** @enum {string} */
+        DeviationKind: "started_late" | "started_early" | "finished_late" | "finished_early" | "took_longer" | "took_shorter";
+        /** @description A difference between plan and fact that reaches the user's threshold. */
+        Deviation: {
+            kind: components["schemas"]["DeviationKind"];
+            minutes: number;
+        };
+        /** @description The other half of a reschedule. */
+        InstanceLink: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            planned_start: string;
+            /** Format: date-time */
+            planned_end: string;
+        };
         Instance: {
             /** Format: uuid */
             id: string;
@@ -406,12 +560,62 @@ export interface components {
             series_id: string | null;
             title: string;
             description: string;
+            /**
+             * Format: date-time
+             * @description Null for a task outside the plan
+             */
+            planned_start: string | null;
+            /** Format: date-time */
+            planned_end: string | null;
+            /**
+             * Format: date-time
+             * @description Null until the task is started or marked
+             */
+            actual_start: string | null;
+            /**
+             * Format: date-time
+             * @description Null while a timer is running
+             */
+            actual_end: string | null;
+            status: components["schemas"]["InstanceStatus"];
+            comment: string;
+            category_ids: string[];
+            rescheduled_from: components["schemas"]["InstanceLink"] | null;
+            rescheduled_to: components["schemas"]["InstanceLink"] | null;
+            /** @description Computed from the plan, the fact and the user's threshold; never stored */
+            deviations: components["schemas"]["Deviation"][];
+        };
+        TrackingPatch: {
+            /** @enum {string} */
+            status?: "planned" | "in_progress" | "done" | "partial" | "not_done";
+            /** Format: date-time */
+            actual_start?: string;
+            /** Format: date-time */
+            actual_end?: string;
+            comment?: string;
+        };
+        RescheduleRequest: {
             /** Format: date-time */
             planned_start: string;
             /** Format: date-time */
             planned_end: string;
-            status: components["schemas"]["InstanceStatus"];
-            category_ids: string[];
+            /** @description The reason, shown on the original */
+            comment?: string;
+        };
+        UnplannedRequest: {
+            title: string;
+            description?: string;
+            category_ids?: string[];
+            /**
+             * Format: date-time
+             * @description Defaults to now
+             */
+            actual_start?: string;
+            /**
+             * Format: date-time
+             * @description Omit to start a timer
+             */
+            actual_end?: string;
         };
         CreateTaskRequest: {
             title: string;
@@ -930,6 +1134,166 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createUnplanned: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnplannedRequest"];
+            };
+        };
+        responses: {
+            /** @description Created task */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    completeInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    stopInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateTracking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingPatch"];
+            };
+        };
+        responses: {
+            /** @description The task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rescheduleInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["InstanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RescheduleRequest"];
+            };
+        };
+        responses: {
+            /** @description The new task */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"];
+                };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];

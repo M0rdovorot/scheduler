@@ -18,9 +18,15 @@ const instance: Instance = {
   description: 'обсудить',
   planned_start: '2026-10-14T07:00:00Z', // 10:00 Moscow
   planned_end: '2026-10-14T08:30:00Z',
+  actual_start: null,
+  actual_end: null,
   status: 'planned',
+  comment: '',
   category_ids: ['c1', 'c2'],
   series_id: null,
+  rescheduled_from: null,
+  rescheduled_to: null,
+  deviations: [],
 }
 
 describe('localAt', () => {

@@ -55,7 +55,7 @@ test('editing "this and following" splits the series', async ({ page }) => {
   const form = page.getByRole('dialog', { name: 'Дело' })
   await expect(form.getByLabel('Повтор')).toHaveValue('weekly')
   await form.getByLabel('Название').fill('Стендап')
-  await form.getByRole('button', { name: 'Сохранить' }).click()
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click()
 
   const scope = page.getByRole('dialog', { name: 'Применить изменения' })
   await scope.getByRole('button', { name: 'Это и следующие' }).click()
@@ -118,7 +118,7 @@ test('the date of a series cannot be moved, but one occurrence can', async ({ pa
   await expect(form.getByLabel('Повтор')).toHaveValue('weekly')
   await form.getByLabel('Конец').fill('2026-10-15T13:00')
   await form.getByLabel('Начало').fill('2026-10-15T12:00')
-  await form.getByRole('button', { name: 'Сохранить' }).click()
+  await form.getByRole('button', { name: 'Сохранить', exact: true }).click()
 
   const scope = page.getByRole('dialog', { name: 'Применить изменения' })
   await expect(scope.getByRole('button', { name: 'Все дела серии' })).toBeDisabled()

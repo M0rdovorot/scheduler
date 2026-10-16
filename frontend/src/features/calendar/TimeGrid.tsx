@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Category, Instance, SlotMinutes } from '@/api/types'
+import { touchesDay, type ShowMode } from './blocks'
 import { weekdayLabel, type Day } from './dates'
 import { DayColumn } from './DayColumn'
 import { dayHeightPx, pxPerMinute } from './grid'
-import { segmentOnDay, wallMinutes } from './segments'
+import { wallMinutes } from './segments'
 import type { SlotSelection } from './useSlotSelection'
 
 interface TimeGridProps {
@@ -12,6 +13,7 @@ interface TimeGridProps {
   now: Date
   tz: string
   slot: SlotMinutes
+  mode: ShowMode
   instances: readonly Instance[]
   categoriesById: ReadonlyMap<string, Category>
   onSelect: (day: Day, selection: SlotSelection) => void
@@ -27,6 +29,7 @@ export function TimeGrid({
   now,
   tz,
   slot,
+  mode,
   instances,
   categoriesById,
   onSelect,
@@ -46,18 +49,16 @@ export function TimeGrid({
   }, [ppm])
 
   const byDay = useMemo(() => {
-    // Hand each column only the tasks that can touch it.
+    // Hand each column only the tasks whose plan or fact can touch it.
     const map = new Map<Day, Instance[]>()
     for (const day of days) map.set(day, [])
     for (const instance of instances) {
-      const start = new Date(instance.planned_start)
-      const end = new Date(instance.planned_end)
       for (const day of days) {
-        if (segmentOnDay(start, end, day, tz)) map.get(day)?.push(instance)
+        if (touchesDay(instance, day, tz, now)) map.get(day)?.push(instance)
       }
     }
     return map
-  }, [days, instances, tz])
+  }, [days, instances, tz, now])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -96,6 +97,8 @@ export function TimeGrid({
               day={day}
               tz={tz}
               slot={slot}
+              mode={mode}
+              now={now}
               instances={byDay.get(day) ?? []}
               categoriesById={categoriesById}
               nowMin={day === today ? nowMin : null}

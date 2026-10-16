@@ -117,7 +117,7 @@ test('creates, recolors by category, edits and deletes a task through the forms'
   await expect(edit.getByRole('checkbox', { name: /Спорт/ })).toBeChecked()
   await edit.getByLabel('Название').fill('Тренировка')
   await edit.getByLabel('Конец').fill('2026-10-14T14:30')
-  await edit.getByRole('button', { name: 'Сохранить' }).click()
+  await edit.getByRole('button', { name: 'Сохранить', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Тренировка, 12:00–14:30' })).toBeVisible()
 
   // Delete needs a confirmation.

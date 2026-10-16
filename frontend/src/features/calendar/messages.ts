@@ -6,8 +6,8 @@ export function taskErrorMessage(error: unknown): string {
     if (error.code === 'series_date_change') {
       return 'Для всей серии нельзя менять дату. Выберите «Только это дело» или оставьте прежнюю дату'
     }
-    if (error.code === 'instance_marked') {
-      return 'Дело уже отмечено: его нельзя удалить из серии. Это можно будет сделать после этапа отслеживания'
+    if (error.code === 'invalid_state') {
+      return 'Это действие недоступно для дела в таком состоянии. Обновите календарь и попробуйте снова'
     }
     if (error.code === 'no_occurrences') return 'По этому правилу нет ни одного повтора'
     if (error.field === 'recurrence') return 'Некорректное правило повтора'
@@ -20,6 +20,11 @@ export function taskErrorMessage(error: unknown): string {
         return 'Описание не длиннее 5000 символов'
       case 'planned_end':
         return 'Конец должен быть позже начала'
+      case 'actual_start':
+      case 'actual_end':
+        return 'Фактическое время указано неверно: конец должен быть позже начала'
+      case 'comment':
+        return 'Комментарий не длиннее 2000 символов'
       case 'category_ids':
         return 'Одна из категорий не найдена. Обновите список и попробуйте снова'
     }

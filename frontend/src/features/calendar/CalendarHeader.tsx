@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { ViewMode } from '@/api/types'
+import { modeOptions, type ShowMode } from './blocks'
 
 const views: readonly { value: ViewMode; label: string }[] = [
   { value: 'day', label: 'День' },
   { value: 'three_days', label: '3 дня' },
   { value: 'week', label: 'Неделя' },
 ]
+
+const modeLabels: Record<ShowMode, string> = { plan: 'План', fact: 'Факт', both: 'Оба' }
 
 interface CalendarHeaderProps {
   title: string
@@ -15,6 +18,10 @@ interface CalendarHeaderProps {
   onPickDay: (day: string) => void
   view: ViewMode
   onViewChange: (view: ViewMode) => void
+  /** What is shown: the plan, the fact or both (already adjusted for the view). */
+  mode: ShowMode
+  onModeChange: (mode: ShowMode) => void
+  onUnplanned: () => void
   onPrev: () => void
   onNext: () => void
   onToday: () => void
@@ -26,6 +33,9 @@ export function CalendarHeader({
   onPickDay,
   view,
   onViewChange,
+  mode,
+  onModeChange,
+  onUnplanned,
   onPrev,
   onNext,
   onToday,
@@ -87,7 +97,17 @@ export function CalendarHeader({
             ⋯
           </button>
           {menuOpen && (
-            <nav className="absolute right-0 z-30 mt-1 w-40 rounded-xl border border-separator bg-bg p-1 shadow-lg">
+            <nav className="absolute right-0 z-30 mt-1 w-48 rounded-xl border border-separator bg-bg p-1 shadow-lg">
+              <button
+                type="button"
+                className="block w-full rounded-lg px-3 py-2 text-left hover:bg-surface"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onUnplanned()
+                }}
+              >
+                Дело вне плана
+              </button>
               <Link to="/categories" className="block rounded-lg px-3 py-2 hover:bg-surface">
                 Категории
               </Link>
@@ -114,6 +134,25 @@ export function CalendarHeader({
             className="flex-1 rounded-[10px] py-1.5 text-sm aria-checked:bg-bg aria-checked:font-semibold aria-checked:shadow-sm"
           >
             {v.label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Что показывать"
+        className="flex rounded-xl bg-surface p-0.5"
+      >
+        {modeOptions(view).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={mode === m}
+            onClick={() => onModeChange(m)}
+            className="flex-1 rounded-[10px] py-1 text-sm aria-checked:bg-bg aria-checked:font-semibold aria-checked:shadow-sm"
+          >
+            {modeLabels[m]}
           </button>
         ))}
       </div>

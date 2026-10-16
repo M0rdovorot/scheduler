@@ -50,8 +50,9 @@ export function draftFromInstance(
   return {
     title: instance.title,
     description: instance.description,
-    start: toLocalInput(new Date(instance.planned_start), tz),
-    end: toLocalInput(new Date(instance.planned_end), tz),
+    // A task outside the plan has no planned time.
+    start: instance.planned_start ? toLocalInput(new Date(instance.planned_start), tz) : '',
+    end: instance.planned_end ? toLocalInput(new Date(instance.planned_end), tz) : '',
     categoryIds: [...instance.category_ids],
     repeat,
   }
@@ -81,7 +82,12 @@ function plausibleYear(instant: Date, tz: string): boolean {
   return year >= 2000 && year <= 2100
 }
 
-export function validateTaskDraft(draft: TaskDraft, tz: string): TaskDraftErrors {
+export function validateTaskDraft(
+  draft: TaskDraft,
+  tz: string,
+  /** False for a task outside the plan, which has no planned time to check. */
+  planned = true,
+): TaskDraftErrors {
   const errors: TaskDraftErrors = {}
   const title = [...draft.title.trim()].length
   if (title < 1) errors.title = 'Введите название'
@@ -89,6 +95,8 @@ export function validateTaskDraft(draft: TaskDraft, tz: string): TaskDraftErrors
   if ([...draft.description].length > maxDescriptionLength) {
     errors.description = `Не длиннее ${maxDescriptionLength} символов`
   }
+
+  if (!planned) return errors
 
   const start = fromLocalInput(draft.start, tz)
   const end = fromLocalInput(draft.end, tz)
@@ -141,13 +149,16 @@ export function toUpdateRequest(
   if (draft.description !== original.description) patch.description = draft.description
 
   // Compare instants, not strings: the same minute may be written differently.
-  const start = fromLocalInput(draft.start, tz)
-  const end = fromLocalInput(draft.end, tz)
-  if (start && start.getTime() !== new Date(original.planned_start).getTime()) {
-    patch.planned_start = start.toISOString()
-  }
-  if (end && end.getTime() !== new Date(original.planned_end).getTime()) {
-    patch.planned_end = end.toISOString()
+  // A task outside the plan has no planned time to change.
+  if (original.planned_start && original.planned_end) {
+    const start = fromLocalInput(draft.start, tz)
+    const end = fromLocalInput(draft.end, tz)
+    if (start && start.getTime() !== new Date(original.planned_start).getTime()) {
+      patch.planned_start = start.toISOString()
+    }
+    if (end && end.getTime() !== new Date(original.planned_end).getTime()) {
+      patch.planned_end = end.toISOString()
+    }
   }
   if (!sameSet(draft.categoryIds, original.category_ids)) patch.category_ids = draft.categoryIds
   if (draft.repeat && !sameRepeat(draft.repeat, savedRepeat, dayOf(draft.start), tz)) {

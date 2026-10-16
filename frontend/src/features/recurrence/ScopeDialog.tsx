@@ -13,6 +13,8 @@ interface ScopeDialogProps {
   options: readonly ScopeOption[]
   /** Style the choices as destructive (for a delete). */
   danger?: boolean
+  /** An explanation shown above the choices. */
+  note?: string
   pending?: boolean
   error?: string | null
   onChoose: (scope: Scope) => void
@@ -24,6 +26,7 @@ export function ScopeDialog({
   title,
   options,
   danger,
+  note,
   pending,
   error,
   onChoose,
@@ -31,6 +34,7 @@ export function ScopeDialog({
 }: ScopeDialogProps) {
   return (
     <Dialog title={title} onClose={onCancel}>
+      {note && <p className="mb-3 text-sm text-hint">{note}</p>}
       <ul className="space-y-2">
         {options.map((o) => (
           <li key={o.scope}>
