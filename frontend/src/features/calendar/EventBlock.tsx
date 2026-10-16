@@ -14,6 +14,8 @@ interface EventBlockProps {
   endMin: number
   continuesBefore: boolean
   continuesAfter: boolean
+  /** Many narrow columns (week view): the title wraps and the time line is left out. */
+  dense: boolean
   onOpen: (instance: Instance) => void
 }
 
@@ -30,6 +32,7 @@ export function EventBlock({
   endMin,
   continuesBefore,
   continuesAfter,
+  dense,
   onOpen,
 }: EventBlockProps) {
   const time = `${formatMinutes(startMin)}–${formatMinutes(endMin)}`
@@ -53,8 +56,18 @@ export function EventBlock({
         borderBottomRightRadius: continuesAfter ? 0 : 6,
       }}
     >
-      <span className="block truncate font-medium">{title}</span>
-      {height >= 40 && <span className="block truncate text-hint">{time}</span>}
+      <span
+        className={`block font-medium ${dense ? 'break-words hyphens-auto' : 'truncate'}`}
+        lang="ru"
+      >
+        {instance.series_id && (
+          <span aria-hidden="true" className="mr-0.5 text-hint" data-repeat>
+            ↻
+          </span>
+        )}
+        {title}
+      </span>
+      {!dense && height >= 40 && <span className="block truncate text-hint">{time}</span>}
     </button>
   )
 }

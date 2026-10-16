@@ -16,6 +16,8 @@ interface DayColumnProps {
   categoriesById: ReadonlyMap<string, Category>
   /** Minutes from midnight of this day for the "now" line; null on other days. */
   nowMin: number | null
+  /** Narrow column: see EventBlock. */
+  dense: boolean
   onSelect: (day: Day, selection: SlotSelection) => void
   onOpen: (instance: Instance) => void
 }
@@ -30,6 +32,7 @@ export function DayColumn({
   instances,
   categoriesById,
   nowMin,
+  dense,
   onSelect,
   onOpen,
 }: DayColumnProps) {
@@ -97,6 +100,7 @@ export function DayColumn({
             endMin={seg.endMin}
             continuesBefore={seg.continuesBefore}
             continuesAfter={seg.continuesAfter}
+            dense={dense}
             onOpen={onOpen}
           />
         )

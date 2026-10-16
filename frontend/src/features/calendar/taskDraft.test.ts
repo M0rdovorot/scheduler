@@ -20,6 +20,7 @@ const instance: Instance = {
   planned_end: '2026-10-14T08:30:00Z',
   status: 'planned',
   category_ids: ['c1', 'c2'],
+  series_id: null,
 }
 
 describe('localAt', () => {
@@ -42,6 +43,7 @@ describe('draftForSelection', () => {
       start: '2026-10-14T10:00',
       end: '2026-10-14T11:30',
       categoryIds: [],
+      repeat: null,
     })
   })
 
@@ -172,5 +174,45 @@ describe('toUpdateRequest', () => {
   it('compares instants, so an equivalent time written otherwise is no change', () => {
     const withSeconds = { ...instance, planned_start: '2026-10-14T07:00:00.000Z' }
     expect(toUpdateRequest(withSeconds, draftFromInstance(withSeconds, tz), tz)).toEqual({})
+  })
+})
+
+describe('repeat rules in drafts', () => {
+  const ok = draftFromInstance(instance, tz)
+  const weekly = {
+    freq: 'weekly' as const,
+    interval: 1,
+    weekdays: [2],
+    monthly: 'monthday' as const,
+    end: { kind: 'never' as const },
+  }
+
+  it('sends the rule with a new task', () => {
+    const request = toCreateRequest({ ...ok, repeat: weekly }, tz)
+    expect(request.recurrence).toEqual({ rrule: 'FREQ=WEEKLY;BYDAY=WE' })
+    expect(toCreateRequest(ok, tz).recurrence).toBeUndefined()
+  })
+
+  it('builds the rule from the date of the first slot', () => {
+    const monthly = { ...weekly, freq: 'monthly' as const, weekdays: [] }
+    const draft = { ...ok, start: '2026-10-14T10:00', end: '2026-10-14T11:00', repeat: monthly }
+    expect(toCreateRequest(draft, tz).recurrence).toEqual({ rrule: 'FREQ=MONTHLY;BYMONTHDAY=14' })
+  })
+
+  it('reports an invalid rule', () => {
+    const errors = validateTaskDraft({ ...ok, repeat: { ...weekly, weekdays: [] } }, tz)
+    expect(errors.repeat?.weekdays).toBeDefined()
+    expect(validateTaskDraft({ ...ok, repeat: weekly }, tz)).toEqual({})
+  })
+
+  it('includes the rule in an update only when it changed', () => {
+    const draft = draftFromInstance(instance, tz, weekly)
+    expect(toUpdateRequest(instance, draft, tz, weekly)).toEqual({})
+    const changed = { ...draft, repeat: { ...weekly, interval: 2 } }
+    expect(toUpdateRequest(instance, changed, tz, weekly)).toEqual({
+      recurrence: { rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=WE' },
+    })
+    // Turning the editor off for a series is not possible: no rule means no change.
+    expect(toUpdateRequest(instance, { ...draft, repeat: null }, tz, weekly)).toEqual({})
   })
 })

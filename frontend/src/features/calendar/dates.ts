@@ -103,9 +103,10 @@ export const dayMonthLabel = (day: Day) => ruDayMonth.format(utcDate(day))
 export const fullDayLabel = (day: Day) => ruFull.format(utcDate(day))
 
 /**
- * Title for the visible range, e.g. "14 окт" or "13 окт – 19 окт". The year is
- * added when the range is not within `currentYear`, so that paging across a
- * year boundary or to a distant date stays unambiguous.
+ * Title for the visible range, short enough for a phone header:
+ * "14 окт." for a day, "13 – 15 окт." within a month, "26.10 – 01.11" across months.
+ * The year is added when the range is not within `currentYear` ("14 окт. 2027",
+ * "28.12.26 – 03.01.27"), so that paging to a distant date stays unambiguous.
  */
 export function rangeLabel(days: readonly Day[], currentYear?: number): string {
   const first = days[0]
@@ -114,10 +115,14 @@ export function rangeLabel(days: readonly Day[], currentYear?: number): string {
   const otherYear =
     currentYear !== undefined &&
     (Number(first.slice(0, 4)) !== currentYear || Number(last.slice(0, 4)) !== currentYear)
-  const format = (day: Day) =>
-    otherYear ? ruDayMonthYear.format(utcDate(day)) : dayMonthLabel(day)
-  if (first === last) return format(first)
-  // Within one month the month is named once: "13 – 15 окт." fits a phone header.
-  if (first.slice(0, 7) === last.slice(0, 7)) return `${Number(first.slice(8))} – ${format(last)}`
-  return `${format(first)} – ${format(last)}`
+
+  if (first === last)
+    return otherYear ? ruDayMonthYear.format(utcDate(first)) : dayMonthLabel(first)
+  if (first.slice(0, 7) === last.slice(0, 7)) {
+    const tail = otherYear ? ruDayMonthYear.format(utcDate(last)) : dayMonthLabel(last)
+    return `${Number(first.slice(8))} – ${tail}`
+  }
+  const numeric = (day: Day) =>
+    `${day.slice(8)}.${day.slice(5, 7)}${otherYear ? `.${day.slice(2, 4)}` : ''}`
+  return `${numeric(first)} – ${numeric(last)}`
 }

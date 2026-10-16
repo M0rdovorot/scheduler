@@ -7,7 +7,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/api/authStore'
 import { setupApi } from '@/api/setup'
-import type { Category, Instance, User } from '@/api/types'
+import type { Category, Instance, Series, User } from '@/api/types'
 import { App } from '@/app/App'
 import { createBrowserPlatform } from '@/platform/browser'
 import { PlatformContext } from '@/platform/context'
@@ -20,6 +20,7 @@ let user: User
 let instances: Instance[]
 let categories: Category[]
 let nextId: number
+let series: Record<string, Series>
 
 const task = (
   id: string,
@@ -27,6 +28,7 @@ const task = (
   start: string,
   end: string,
   categoryIds: string[] = [],
+  seriesId: string | null = null,
 ): Instance => ({
   id,
   title,
@@ -35,6 +37,7 @@ const task = (
   planned_end: end,
   status: 'planned',
   category_ids: categoryIds,
+  series_id: seriesId,
 })
 
 const category = (id: string, name: string, color: string): Category => ({
@@ -50,6 +53,11 @@ function server(req: StubRequest): Response {
     return json(200, { token: 't', expires_at: '2030-01-01T00:00:00Z', user })
   }
   const body = (req.body ?? {}) as Partial<Instance>
+  const seriesMatch = /^\/series\/([^/]+)$/.exec(req.path)
+  if (req.method === 'GET' && seriesMatch) {
+    const found = series[seriesMatch[1]!]
+    return found ? json(200, found) : json(404, { code: 'not_found', message: 'nf' })
+  }
   const match = /^\/instances\/([^/]+)$/.exec(req.path)
   const target = match ? instances.find((i) => i.id === match[1]) : undefined
 
@@ -71,7 +79,11 @@ function server(req: StubRequest): Response {
     return json(201, created)
   }
   if (!match || !target) return json(404, { code: 'not_found', message: 'not found' })
-  if (req.method === 'PATCH') return json(200, Object.assign(target, body))
+  if (req.method === 'PATCH') {
+    const scope = req.query.get('scope') ?? 'this'
+    if (scope !== 'this') return new Response(null, { status: 204 })
+    return json(200, Object.assign(target, body))
+  }
   if (req.method === 'DELETE') {
     instances = instances.filter((i) => i !== target)
     return noContent()
@@ -127,6 +139,7 @@ beforeEach(() => {
   instances = []
   categories = []
   nextId = 1
+  series = {}
   net.calls.length = 0
   net.handler = server
   useAuthStore.getState().setToken(null)
@@ -470,5 +483,214 @@ describe('calendar', () => {
     // (the year check itself is covered in taskDraft.test.ts).
     expect(form.getByText(/Проверьте год|Укажите дату и время начала/)).toBeTruthy()
     expect((form.getByRole('button', { name: 'Создать' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  describe('regular tasks', () => {
+    const weeklySeries: Series = {
+      id: 's1',
+      title: 'Планёрка',
+      description: '',
+      rrule: 'FREQ=WEEKLY;BYDAY=WE',
+      start_local: '2026-10-14T09:00',
+      timezone: 'Europe/Moscow',
+      duration_minutes: 60,
+      category_ids: [],
+    }
+    const occurrence = () =>
+      task('t1', 'Планёрка', '2026-10-14T06:00:00Z', '2026-10-14T07:00:00Z', [], 's1')
+
+    beforeEach(() => {
+      series = { s1: { ...weeklySeries } }
+      instances = [occurrence()]
+    })
+
+    it('marks occurrences of a series in the grid', async () => {
+      instances.push(task('t2', 'Разовое', '2026-10-14T10:00:00Z', '2026-10-14T11:00:00Z'))
+      renderCalendar()
+      const repeated = await screen.findByRole('button', { name: /Планёрка/ })
+      expect(repeated.querySelector('[data-repeat]')).toBeTruthy()
+      expect(
+        screen.getByRole('button', { name: /Разовое/ }).querySelector('[data-repeat]'),
+      ).toBeNull()
+    })
+
+    it('creates a weekly task with the repeat editor', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+      const form = within(await dialog())
+
+      await ui.type(form.getByLabelText('Название'), 'Зал')
+      await ui.selectOptions(form.getByLabelText('Повтор'), 'weekly')
+      // The weekday of the start date (Wednesday) is selected for a start.
+      expect(form.getByRole('button', { name: 'ср' }).getAttribute('aria-pressed')).toBe('true')
+      await ui.click(form.getByRole('button', { name: 'пн' }))
+      expect(form.getByTestId('repeat-summary').textContent).toBe('Еженедельно: пн, ср')
+      await ui.click(form.getByRole('button', { name: 'Создать' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        method: 'POST',
+        path: '/tasks',
+        body: { title: 'Зал', recurrence: { rrule: 'FREQ=WEEKLY;BYDAY=MO,WE' } },
+      })
+    })
+
+    it('asks what to apply an edit to, and sends the chosen scope', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      // The rule of the series is shown in the editor.
+      expect(((await form.findByLabelText('Повтор')) as HTMLSelectElement).value).toBe('weekly')
+
+      await ui.clear(form.getByLabelText('Название'))
+      await ui.type(form.getByLabelText('Название'), 'Стендап')
+      await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+
+      const scope = within(await screen.findByRole('dialog', { name: 'Применить изменения' }))
+      expect(mutations()).toEqual([])
+      await ui.click(scope.getByRole('button', { name: 'Все дела серии' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        method: 'PATCH',
+        path: '/instances/t1',
+        body: { title: 'Стендап' },
+      })
+      expect(mutations()[0]?.query.get('scope')).toBe('all')
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
+
+    it.each([
+      ['Только это дело', 'this'],
+      ['Это и следующие', 'following'],
+    ])('sends scope %s as %s', async (label, want) => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      await form.findByLabelText('Повтор')
+      await ui.clear(form.getByLabelText('Название'))
+      await ui.type(form.getByLabelText('Название'), 'Стендап')
+      await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+      await ui.click(
+        within(await screen.findByRole('dialog', { name: 'Применить изменения' })).getByRole(
+          'button',
+          { name: label },
+        ),
+      )
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]?.query.get('scope')).toBe(want)
+    })
+
+    it('does not allow changing the rule for one occurrence only', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      await ui.selectOptions(await form.findByLabelText('Повтор'), 'daily')
+      await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+
+      const scope = within(await screen.findByRole('dialog', { name: 'Применить изменения' }))
+      expect(
+        (scope.getByRole('button', { name: 'Только это дело' }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+      await ui.click(scope.getByRole('button', { name: 'Это и следующие' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({ body: { recurrence: { rrule: 'FREQ=DAILY' } } })
+      expect(mutations()[0]?.query.get('scope')).toBe('following')
+    })
+
+    it('does not allow moving the date for the series', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      await form.findByLabelText('Повтор')
+      // End first: while the end is before the start its label also holds an error message.
+      fireEvent.change(form.getByLabelText('Конец'), { target: { value: '2026-10-15T10:00' } })
+      fireEvent.change(form.getByLabelText('Начало'), { target: { value: '2026-10-15T09:00' } })
+      await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+
+      const scope = within(await screen.findByRole('dialog', { name: 'Применить изменения' }))
+      expect(
+        (scope.getByRole('button', { name: 'Это и следующие' }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+      expect(
+        (scope.getByRole('button', { name: 'Все дела серии' }) as HTMLButtonElement).disabled,
+      ).toBe(true)
+      expect(
+        (scope.getByRole('button', { name: 'Только это дело' }) as HTMLButtonElement).disabled,
+      ).toBe(false)
+    })
+
+    it('shows the server explanation when a series edit is refused', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      const form = within(await dialog())
+      await form.findByLabelText('Повтор')
+      await ui.clear(form.getByLabelText('Название'))
+      await ui.type(form.getByLabelText('Название'), 'Стендап')
+      await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+      net.handler = (req) =>
+        req.method === 'PATCH'
+          ? json(400, { code: 'no_occurrences', message: 'x', field: 'recurrence' })
+          : server(req)
+      await ui.click(
+        within(await screen.findByRole('dialog', { name: 'Применить изменения' })).getByRole(
+          'button',
+          { name: 'Все дела серии' },
+        ),
+      )
+
+      expect((await screen.findByRole('alert')).textContent).toMatch(/нет ни одного повтора/)
+      expect(screen.getByRole('dialog', { name: 'Применить изменения' })).toBeTruthy()
+    })
+
+    it('asks the scope when deleting an occurrence', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      await ui.click(within(await dialog()).getByRole('button', { name: 'Удалить' }))
+
+      const scope = within(
+        await screen.findByRole('dialog', { name: 'Удалить повторяющееся дело' }),
+      )
+      expect(mutations()).toEqual([])
+      await ui.click(scope.getByRole('button', { name: 'Это и следующие' }))
+
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({ method: 'DELETE', path: '/instances/t1' })
+      expect(mutations()[0]?.query.get('scope')).toBe('following')
+    })
+
+    it('keeps the plain confirmation for a one-off task and has no repeat editor there', async () => {
+      instances = [task('t9', 'Разовое', '2026-10-14T10:00:00Z', '2026-10-14T11:00:00Z')]
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Разовое/ }))
+      const form = within(await dialog())
+      expect(form.queryByLabelText('Повтор')).toBeNull()
+
+      await ui.click(form.getByRole('button', { name: 'Удалить' }))
+      expect(await screen.findByRole('dialog', { name: 'Удалить дело?' })).toBeTruthy()
+      expect(screen.queryByRole('dialog', { name: 'Удалить повторяющееся дело' })).toBeNull()
+    })
+
+    it('closes the dialog when the occurrence disappears after the series was rewritten', async () => {
+      const ui = userEvent.setup()
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Планёрка/ }))
+      await dialog()
+
+      // Another device rewrote the series: the occurrence is re-created with a new id.
+      instances = [{ ...occurrence(), id: 'new-id' }]
+      await ui.click(screen.getByRole('radio', { name: '3 дня' }))
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
   })
 })

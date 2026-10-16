@@ -1,4 +1,11 @@
 import type { CreateTaskRequest, Instance, SlotMinutes, UpdateInstanceRequest } from '@/api/types'
+import {
+  validateRepeat,
+  toRRule,
+  sameRepeat,
+  type Repeat,
+  type RepeatErrors,
+} from '@/features/recurrence/repeat'
 import { addDays, type Day } from './dates'
 import { fromLocalInput, toLocalInput } from './localTime'
 import { minutesPerDay, wallMinutes } from './segments'
@@ -13,9 +20,13 @@ export interface TaskDraft {
   start: string
   end: string
   categoryIds: string[]
+  /** The repeat rule, or null for a one-off task. */
+  repeat: Repeat | null
 }
 
-export type TaskDraftErrors = Partial<Record<'title' | 'description' | 'start' | 'end', string>>
+export type TaskDraftErrors = Partial<Record<'title' | 'description' | 'start' | 'end', string>> & {
+  repeat?: RepeatErrors
+}
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -26,13 +37,23 @@ export function localAt(day: Day, minutes: number): string {
   return `${date}T${pad(Math.floor(rest / 60))}:${pad(rest % 60)}`
 }
 
-export function draftFromInstance(instance: Instance, tz: string): TaskDraft {
+/** The date part of a datetime-local value. */
+export function dayOf(local: string): Day {
+  return local.slice(0, 10)
+}
+
+export function draftFromInstance(
+  instance: Instance,
+  tz: string,
+  repeat: Repeat | null = null,
+): TaskDraft {
   return {
     title: instance.title,
     description: instance.description,
     start: toLocalInput(new Date(instance.planned_start), tz),
     end: toLocalInput(new Date(instance.planned_end), tz),
     categoryIds: [...instance.category_ids],
+    repeat,
   }
 }
 
@@ -44,6 +65,7 @@ export function draftForSelection(day: Day, startMin: number, endMin: number): T
     start: localAt(day, startMin),
     end: localAt(day, endMin),
     categoryIds: [],
+    repeat: null,
   }
 }
 
@@ -75,6 +97,10 @@ export function validateTaskDraft(draft: TaskDraft, tz: string): TaskDraftErrors
   if (!end) errors.end = 'Укажите дату и время окончания'
   else if (!plausibleYear(end, tz)) errors.end = 'Проверьте год'
   else if (start && end.getTime() <= start.getTime()) errors.end = 'Конец должен быть позже начала'
+  if (draft.repeat) {
+    const repeat = validateRepeat(draft.repeat, dayOf(draft.start))
+    if (Object.keys(repeat).length > 0) errors.repeat = repeat
+  }
   return errors
 }
 
@@ -89,17 +115,25 @@ export function toCreateRequest(draft: TaskDraft, tz: string): CreateTaskRequest
     planned_start: start.toISOString(),
     planned_end: end.toISOString(),
     category_ids: draft.categoryIds,
+    ...(draft.repeat
+      ? { recurrence: { rrule: toRRule(draft.repeat, dayOf(draft.start), tz) } }
+      : {}),
   }
 }
 
 const sameSet = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((x) => b.includes(x))
 
-/** Only the fields of a valid draft that differ from the saved task. */
+/**
+ * Only the fields of a valid draft that differ from the saved task. For an
+ * occurrence of a series, `savedRepeat` is the saved rule: when the draft's
+ * differs, the new rule is included (it only applies to "following" and "all").
+ */
 export function toUpdateRequest(
   original: Instance,
   draft: TaskDraft,
   tz: string,
+  savedRepeat: Repeat | null = null,
 ): UpdateInstanceRequest {
   const patch: UpdateInstanceRequest = {}
   const title = draft.title.trim()
@@ -116,5 +150,8 @@ export function toUpdateRequest(
     patch.planned_end = end.toISOString()
   }
   if (!sameSet(draft.categoryIds, original.category_ids)) patch.category_ids = draft.categoryIds
+  if (draft.repeat && !sameRepeat(draft.repeat, savedRepeat, dayOf(draft.start), tz)) {
+    patch.recurrence = { rrule: toRRule(draft.repeat, dayOf(draft.start), tz) }
+  }
   return patch
 }

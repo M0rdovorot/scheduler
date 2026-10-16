@@ -251,12 +251,47 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a task */
+        /**
+         * Delete a task
+         * @description Deleting one occurrence of a regular task keeps it as cancelled, so it is not
+         *     created again. `following` and `all` delete the planned occurrences of the
+         *     series; marked ones are history and stay as one-off tasks.
+         */
         delete: operations["deleteInstance"];
         options?: never;
         head?: never;
-        /** Edit a task; omitted fields stay as they are */
+        /**
+         * Edit a task; omitted fields stay as they are
+         * @description With `scope=this` (the default) the task is changed on its own and answers with it;
+         *     an occurrence of a regular task then becomes independent of later edits of the series.
+         *
+         *     With `scope=following` or `all` the series is rewritten and the answer is 204:
+         *     occurrences that are still planned and untouched are re-created from the new
+         *     template when their window is next requested, so their ids change. Marked
+         *     occurrences (with a fact or a status other than planned) are never changed.
+         *     Only the time of day and the duration can change this way; a new date is
+         *     refused with code `series_date_change`. `recurrence` changes the repeat rule.
+         */
         patch: operations["updateInstance"];
+        trace?: never;
+    };
+    "/series/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SeriesId"];
+            };
+            cookie?: never;
+        };
+        /** The template of a regular task */
+        get: operations["getSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -364,6 +399,11 @@ export interface components {
         Instance: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description Set for occurrences of a regular task; see `GET /series/{id}`
+             */
+            series_id: string | null;
             title: string;
             description: string;
             /** Format: date-time */
@@ -384,6 +424,7 @@ export interface components {
              */
             planned_end: string;
             category_ids?: string[];
+            recurrence?: components["schemas"]["Recurrence"];
         };
         UpdateInstanceRequest: {
             title?: string;
@@ -395,6 +436,37 @@ export interface components {
             planned_end?: string;
             /** @description Replaces the whole set; an empty array removes all categories */
             category_ids?: string[];
+            recurrence?: components["schemas"]["Recurrence"];
+        };
+        /**
+         * @description Repeat rule of a regular task. The first occurrence slot of a new task is its
+         *     `planned_start`–`planned_end`; times are repeated by the wall clock of the
+         *     user's time zone, also across daylight saving changes. Error codes:
+         *     `no_occurrences` (the rule has no occurrence from the start on).
+         */
+        Recurrence: {
+            /**
+             * @description RRULE (RFC 5545) without DTSTART. Supported: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY,
+             *     INTERVAL, BYDAY (weekdays for WEEKLY; one ordinal weekday like `2TU` or `-1FR`
+             *     for MONTHLY), BYMONTHDAY (MONTHLY), and COUNT or UNTIL (UTC, `20261231T205959Z`).
+             * @example FREQ=WEEKLY;BYDAY=MO,WE
+             */
+            rrule: string;
+        };
+        Series: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            description: string;
+            rrule: string;
+            /**
+             * @description Wall-clock start of the first occurrence slot, read in `timezone`
+             * @example 2026-10-14T09:00
+             */
+            start_local: string;
+            timezone: string;
+            duration_minutes: number;
+            category_ids: string[];
         };
     };
     responses: {
@@ -436,6 +508,13 @@ export interface components {
         };
     };
     parameters: {
+        SeriesId: string;
+        /**
+         * @description What an edit or a delete of an occurrence of a regular task applies to:
+         *     only this one, this and the following ones, or all of them. A one-off
+         *     task accepts only `this`.
+         */
+        Scope: "this" | "following" | "all";
         InstanceId: string;
         CategoryId: string;
     };
@@ -786,7 +865,14 @@ export interface operations {
     };
     deleteInstance: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description What an edit or a delete of an occurrence of a regular task applies to:
+                 *     only this one, this and the following ones, or all of them. A one-off
+                 *     task accepts only `this`.
+                 */
+                scope?: components["parameters"]["Scope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["InstanceId"];
@@ -802,13 +888,21 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
     updateInstance: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description What an edit or a delete of an occurrence of a regular task applies to:
+                 *     only this one, this and the following ones, or all of them. A one-off
+                 *     task accepts only `this`.
+                 */
+                scope?: components["parameters"]["Scope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["InstanceId"];
@@ -821,7 +915,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Updated task */
+            /** @description Updated task (`scope=this`) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -830,7 +924,38 @@ export interface operations {
                     "application/json": components["schemas"]["Instance"];
                 };
             };
+            /** @description The series was rewritten (`scope=following` or `all`) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSeries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["SeriesId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Series */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Series"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

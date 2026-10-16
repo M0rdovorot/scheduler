@@ -99,6 +99,7 @@ export function TimeGrid({
               instances={byDay.get(day) ?? []}
               categoriesById={categoriesById}
               nowMin={day === today ? nowMin : null}
+              dense={days.length > 3}
               onSelect={onSelect}
               onOpen={onOpen}
             />

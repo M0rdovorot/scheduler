@@ -9,3 +9,5 @@ export type Category = components['schemas']['Category']
 export type Instance = components['schemas']['Instance']
 export type CreateTaskRequest = components['schemas']['CreateTaskRequest']
 export type UpdateInstanceRequest = components['schemas']['UpdateInstanceRequest']
+export type Series = components['schemas']['Series']
+export type Scope = 'this' | 'following' | 'all'

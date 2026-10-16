@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import { ApiError, unwrap } from './errors'
-import type { CreateTaskRequest, UpdateInstanceRequest } from './types'
+import type { CreateTaskRequest, Scope, UpdateInstanceRequest } from './types'
 
 export const instancesKey = ['instances'] as const
 
@@ -33,17 +33,58 @@ export function useCreateTask() {
   )
 }
 
+/**
+ * Edits a task. With scope "this" the updated task is returned; with "following"
+ * or "all" the series is rewritten, the occurrences are created again (with new
+ * ids) when their window is next loaded, and nothing is returned.
+ */
 export function useUpdateInstance() {
-  return useInstanceMutation(async ({ id, ...body }: { id: string } & UpdateInstanceRequest) =>
-    unwrap(await api.PATCH('/instances/{id}', { params: { path: { id } }, body })),
-  )
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      id,
+      scope = 'this',
+      ...body
+    }: { id: string; scope?: Scope } & UpdateInstanceRequest) => {
+      const { data, error, response } = await api.PATCH('/instances/{id}', {
+        params: { path: { id }, query: { scope } },
+        body,
+      })
+      if (!response.ok)
+        throw new ApiError(response.status, typeof error === 'object' ? error : undefined)
+      return data
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: instancesKey })
+      await queryClient.invalidateQueries({ queryKey: seriesKey })
+    },
+  })
 }
 
 export function useDeleteInstance() {
-  return useInstanceMutation(async (id: string) => {
-    const { response, error } = await api.DELETE('/instances/{id}', { params: { path: { id } } })
-    if (!response.ok) {
-      throw new ApiError(response.status, typeof error === 'object' ? error : undefined)
-    }
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, scope = 'this' }: { id: string; scope?: Scope }) => {
+      const { response, error } = await api.DELETE('/instances/{id}', {
+        params: { path: { id }, query: { scope } },
+      })
+      if (!response.ok)
+        throw new ApiError(response.status, typeof error === 'object' ? error : undefined)
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: instancesKey })
+      await queryClient.invalidateQueries({ queryKey: seriesKey })
+    },
+  })
+}
+
+export const seriesKey = ['series'] as const
+
+/** The template of a regular task; disabled while `id` is null. */
+export function useSeries(id: string | null) {
+  return useQuery({
+    queryKey: [...seriesKey, id],
+    queryFn: async () => unwrap(await api.GET('/series/{id}', { params: { path: { id: id! } } })),
+    enabled: id !== null,
   })
 }

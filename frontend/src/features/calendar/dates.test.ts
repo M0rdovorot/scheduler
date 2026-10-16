@@ -120,7 +120,7 @@ describe('rangeLabel', () => {
   it('shows a single day or a range', () => {
     expect(rangeLabel(['2026-10-14'])).toMatch(/14\s+окт/)
     expect(rangeLabel(['2026-10-12', '2026-10-18'])).toMatch(/^12 – 18\s+окт/)
-    expect(rangeLabel(['2026-10-28', '2026-11-03'])).toMatch(/28\s+окт.*3\s+нояб/)
+    expect(rangeLabel(['2026-10-26', '2026-11-01'])).toBe('26.10 – 01.11')
     expect(rangeLabel([])).toBe('')
   })
 
@@ -128,7 +128,8 @@ describe('rangeLabel', () => {
     expect(rangeLabel(['2026-10-14'], 2026)).not.toMatch(/2026/)
     expect(rangeLabel(['2027-01-05'], 2026)).toMatch(/2027/)
     // A week across New Year: both ends get a year, so the end is not mistaken for this year.
-    expect(rangeLabel(['2026-12-28', '2027-01-03'], 2026)).toMatch(/2026.*2027/)
-    expect(rangeLabel(['2025-12-29', '2026-01-04'], 2026)).toMatch(/2025.*2026/)
+    expect(rangeLabel(['2026-12-28', '2027-01-03'], 2026)).toBe('28.12.26 – 03.01.27')
+    expect(rangeLabel(['2025-12-29', '2026-01-04'], 2026)).toBe('29.12.25 – 04.01.26')
+    expect(rangeLabel(['2027-02-08', '2027-02-14'], 2026)).toMatch(/^8 – 14\s+февр.*2027/)
   })
 })
