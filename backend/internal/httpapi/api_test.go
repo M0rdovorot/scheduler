@@ -18,6 +18,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
+	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
@@ -35,15 +36,17 @@ type testAPI struct {
 func newTestAPI(t *testing.T, devAuth bool) *testAPI {
 	t.Helper()
 	st := store.NewStore(testutil.NewDB(t, migrations.FS))
+	users, categories, tasks := user.NewService(st), category.NewService(st), task.NewService(st)
 	srv := NewServer(Deps{
 		DB: st,
 		Auth: auth.NewService(st, auth.Config{
 			BotToken: botToken, DevAuth: devAuth,
 			SessionTTL: time.Hour, InitDataMaxAge: time.Hour,
 		}),
-		Users:      user.NewService(st),
-		Categories: category.NewService(st),
-		Tasks:      task.NewService(st),
+		Users:      users,
+		Categories: categories,
+		Tasks:      tasks,
+		Stats:      stats.NewService(tasks, categories, users),
 	})
 	return &testAPI{t: t, handler: NewRouter(srv, slog.New(slog.NewTextHandler(io.Discard, nil)))}
 }

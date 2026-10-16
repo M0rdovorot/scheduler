@@ -68,3 +68,9 @@ SELECT EXISTS (
     SELECT 1 FROM task_instances r
     WHERE r.rescheduled_from_id = @id AND r.user_id = @user_id AND r.status <> 'cancelled'
 ) AS has_replacement;
+
+-- name: ListRunningInstances :many
+-- Tasks with a running timer, from whatever day they were started.
+SELECT * FROM instance_details
+WHERE user_id = $1 AND status = 'in_progress'
+ORDER BY actual_start, id;

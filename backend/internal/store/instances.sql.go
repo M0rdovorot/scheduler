@@ -295,6 +295,52 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 	return items, nil
 }
 
+const listRunningInstances = `-- name: ListRunningInstances :many
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details
+WHERE user_id = $1 AND status = 'in_progress'
+ORDER BY actual_start, id
+`
+
+// Tasks with a running timer, from whatever day they were started.
+func (q *Queries) ListRunningInstances(ctx context.Context, userID uuid.UUID) ([]InstanceDetail, error) {
+	rows, err := q.db.Query(ctx, listRunningInstances, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InstanceDetail
+	for rows.Next() {
+		var i InstanceDetail
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Description,
+			&i.PlannedStart,
+			&i.PlannedEnd,
+			&i.ActualStart,
+			&i.ActualEnd,
+			&i.Status,
+			&i.Comment,
+			&i.SeriesID,
+			&i.CategoryIds,
+			&i.FromID,
+			&i.FromPlannedStart,
+			&i.FromPlannedEnd,
+			&i.ToID,
+			&i.ToPlannedStart,
+			&i.ToPlannedEnd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockInstance = `-- name: LockInstance :one
 SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached, actual_start, actual_end, comment, rescheduled_from_id FROM task_instances
 WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'

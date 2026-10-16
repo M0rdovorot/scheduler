@@ -17,6 +17,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
+	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
@@ -55,6 +56,9 @@ func run() error {
 	log.Info("migrations applied", "count", applied)
 
 	st := store.NewStore(pool)
+	users := user.NewService(st)
+	categories := category.NewService(st)
+	tasks := task.NewService(st)
 	api := httpapi.NewServer(httpapi.Deps{
 		DB: st,
 		Auth: auth.NewService(st, auth.Config{
@@ -63,9 +67,10 @@ func run() error {
 			SessionTTL:     cfg.SessionTTL,
 			InitDataMaxAge: cfg.InitDataMaxAge,
 		}),
-		Users:      user.NewService(st),
-		Categories: category.NewService(st),
-		Tasks:      task.NewService(st),
+		Users:      users,
+		Categories: categories,
+		Tasks:      tasks,
+		Stats:      stats.NewService(tasks, categories, users),
 	})
 
 	srv := &http.Server{

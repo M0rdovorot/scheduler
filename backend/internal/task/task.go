@@ -122,7 +122,10 @@ func NewService(s *store.Store) *Service {
 	return &Service{store: s, now: time.Now}
 }
 
-// List returns the tasks whose plan overlaps [from, to). The occurrences of
+// SetClock replaces the clock of the service; tests use it to fix the time.
+func (s *Service) SetClock(now func() time.Time) { s.now = now }
+
+// List returns the tasks whose plan or fact overlaps [from, to). The occurrences of
 // regular tasks in the window are created first if they do not exist yet.
 func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]Instance, error) {
 	if !to.After(from) {
@@ -131,6 +134,12 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time
 	if to.Sub(from) > MaxRange {
 		return nil, &validation.Error{Field: "to", Message: "the range is too long (at most 100 days)"}
 	}
+	return s.ListUnbounded(ctx, userID, from, to)
+}
+
+// ListUnbounded is List without the limit on the length of the window, for callers
+// that bound it themselves (statistics).
+func (s *Service) ListUnbounded(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]Instance, error) {
 	if err := s.Materialize(ctx, userID, from, to); err != nil {
 		return nil, err
 	}
@@ -143,6 +152,23 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID, from, to time.Time
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	out := make([]Instance, len(rows))
+	for i, r := range rows {
+		out[i] = fromRow(r, threshold)
+	}
+	return out, nil
+}
+
+// Running returns the tasks whose timer is running, whenever they were started.
+func (s *Service) Running(ctx context.Context, userID uuid.UUID) ([]Instance, error) {
+	threshold, err := deviationThreshold(ctx, s.store.Queries, userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.store.ListRunningInstances(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list running instances: %w", err)
 	}
 	out := make([]Instance, len(rows))
 	for i, r := range rows {

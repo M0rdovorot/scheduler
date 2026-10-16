@@ -14,6 +14,7 @@ tags:
   - name: categories
   - name: tasks
   - name: tracking
+  - name: stats
 paths:
   /healthz:
     get:
@@ -377,6 +378,58 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /instances/running:
+    get:
+      operationId: listRunningInstances
+      summary: Tasks whose timer is running, from whatever day they were started
+      tags: [tracking]
+      responses:
+        "200":
+          description: Running tasks, the longest running first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Instance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /stats:
+    get:
+      operationId: getStats
+      summary: Statistics of a period, by the fact
+      description: |
+        Hours by category and by task, the busy time, plan against fact, the breakdown by
+        day and the deviations (FR-8). The period is at most 366 days; days are local days
+        of the user's time zone.
+
+        A running timer counts up to now, but at most 12 hours: a timer that runs longer
+        counts only its first 12 hours and is reported in `long_running_timers`.
+      tags: [stats]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /instances/unplanned:
     post:
       operationId: createUnplanned
@@ -1018,3 +1071,158 @@ components:
           items:
             type: string
             format: uuid
+    CategoryMinutes:
+      type: object
+      required: [category_id, minutes]
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        minutes:
+          type: integer
+    TaskMinutes:
+      type: object
+      required: [title, count, minutes]
+      properties:
+        title:
+          type: string
+        count:
+          type: integer
+        minutes:
+          type: integer
+    StatsDay:
+      type: object
+      required: [date, minutes, by_category]
+      properties:
+        date:
+          type: string
+          example: "2026-10-14"
+          description: Local date
+        minutes:
+          type: integer
+          description: Busy time of the day; parallel tasks are not counted twice
+        by_category:
+          type: array
+          description: |
+            The tasks of the day split by the color category of each task (its first category
+            by name); `category_id` is null for tasks without a category. Parallel tasks add up.
+          items:
+            $ref: "#/components/schemas/DayCategoryMinutes"
+    DayCategoryMinutes:
+      type: object
+      required: [category_id, minutes]
+      properties:
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+        minutes:
+          type: integer
+    PlanVsFact:
+      type: object
+      required:
+        - planned_count
+        - done
+        - partial
+        - not_done
+        - in_progress
+        - unmarked
+        - upcoming
+        - rescheduled
+        - late_starts
+        - overran
+        - percent_done
+      properties:
+        planned_count:
+          type: integer
+          description: Planned tasks of the period by planned start, without rescheduled originals
+        done:
+          type: integer
+        partial:
+          type: integer
+        not_done:
+          type: integer
+        in_progress:
+          type: integer
+        unmarked:
+          type: integer
+          description: Planned tasks whose time is over and nobody marked them; not in the fact
+        upcoming:
+          type: integer
+        rescheduled:
+          type: integer
+          description: Rescheduled originals; their replacements are counted as planned
+        late_starts:
+          type: integer
+          description: Tasks with the deviation `started_late`
+        overran:
+          type: integer
+          description: Tasks with the deviation `finished_late`
+        percent_done:
+          type: integer
+          nullable: true
+          description: done / (done + partial + not done + unmarked), rounded; null until a task is decided
+    StatsReport:
+      type: object
+      required:
+        - from
+        - to
+        - actual_minutes
+        - planned_minutes
+        - unplanned_minutes
+        - unplanned_count
+        - long_running_timers
+        - uncategorized_minutes
+        - categories
+        - tasks
+        - days
+        - plan_vs_fact
+        - deviations
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        actual_minutes:
+          type: integer
+          description: Busy time by the fact, a union of intervals (FR-8.3)
+        planned_minutes:
+          type: integer
+          description: Busy time by the plan, a union of intervals; rescheduled originals are not in it
+        unplanned_minutes:
+          type: integer
+          description: The part of the fact that belongs to tasks outside the plan (FR-8.6)
+        unplanned_count:
+          type: integer
+        long_running_timers:
+          type: integer
+          description: Timers that run for longer than 12 hours and are counted only for the first 12
+        uncategorized_minutes:
+          type: integer
+        categories:
+          type: array
+          description: |
+            Hours of each category including all its subcategories. A task counts once in each
+            category of its categories and their ancestors (FR-8.2). Only categories with time.
+          items:
+            $ref: "#/components/schemas/CategoryMinutes"
+        tasks:
+          type: array
+          description: Tasks grouped by title, the longest first
+          items:
+            $ref: "#/components/schemas/TaskMinutes"
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatsDay"
+        plan_vs_fact:
+          $ref: "#/components/schemas/PlanVsFact"
+        deviations:
+          type: array
+          description: |
+            Tasks with a deviation, and not done, partial or rescheduled tasks with a comment,
+            ordered by planned start (FR-8.4)
+          items:
+            $ref: "#/components/schemas/Instance"

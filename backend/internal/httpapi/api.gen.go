@@ -249,6 +249,12 @@ type Category struct {
 	ParentId *openapi_types.UUID `json:"parent_id"`
 }
 
+// CategoryMinutes defines model for CategoryMinutes.
+type CategoryMinutes struct {
+	CategoryId openapi_types.UUID `json:"category_id"`
+	Minutes    int                `json:"minutes"`
+}
+
 // CreateCategoryRequest defines model for CreateCategoryRequest.
 type CreateCategoryRequest struct {
 	// Color Hex color `#rrggbb`
@@ -276,6 +282,12 @@ type CreateTaskRequest struct {
 	// `no_occurrences` (the rule has no occurrence from the start on).
 	Recurrence *Recurrence `json:"recurrence,omitempty"`
 	Title      string      `json:"title"`
+}
+
+// DayCategoryMinutes defines model for DayCategoryMinutes.
+type DayCategoryMinutes struct {
+	CategoryId *openapi_types.UUID `json:"category_id"`
+	Minutes    int                 `json:"minutes"`
 }
 
 // DevLoginRequest defines model for DevLoginRequest.
@@ -361,6 +373,33 @@ type MoveCategoryRequest struct {
 	ParentId *openapi_types.UUID `json:"parent_id,omitempty"`
 }
 
+// PlanVsFact defines model for PlanVsFact.
+type PlanVsFact struct {
+	Done       int `json:"done"`
+	InProgress int `json:"in_progress"`
+
+	// LateStarts Tasks with the deviation `started_late`
+	LateStarts int `json:"late_starts"`
+	NotDone    int `json:"not_done"`
+
+	// Overran Tasks with the deviation `finished_late`
+	Overran int `json:"overran"`
+	Partial int `json:"partial"`
+
+	// PercentDone done / (done + partial + not done + unmarked), rounded; null until a task is decided
+	PercentDone *int `json:"percent_done"`
+
+	// PlannedCount Planned tasks of the period by planned start, without rescheduled originals
+	PlannedCount int `json:"planned_count"`
+
+	// Rescheduled Rescheduled originals; their replacements are counted as planned
+	Rescheduled int `json:"rescheduled"`
+
+	// Unmarked Planned tasks whose time is over and nobody marked them; not in the fact
+	Unmarked int `json:"unmarked"`
+	Upcoming int `json:"upcoming"`
+}
+
 // Recurrence Repeat rule of a regular task. The first occurrence slot of a new task is its
 // `planned_start`–`planned_end`; times are repeated by the wall clock of the
 // user's time zone, also across daylight saving changes. Error codes:
@@ -418,6 +457,60 @@ type SettingsPatch struct {
 
 // SlotMinutes defines model for SlotMinutes.
 type SlotMinutes int
+
+// StatsDay defines model for StatsDay.
+type StatsDay struct {
+	// ByCategory The tasks of the day split by the color category of each task (its first category
+	// by name); `category_id` is null for tasks without a category. Parallel tasks add up.
+	ByCategory []DayCategoryMinutes `json:"by_category"`
+
+	// Date Local date
+	//
+	// Example: 2026-10-14
+	Date string `json:"date"`
+
+	// Minutes Busy time of the day; parallel tasks are not counted twice
+	Minutes int `json:"minutes"`
+}
+
+// StatsReport defines model for StatsReport.
+type StatsReport struct {
+	// ActualMinutes Busy time by the fact, a union of intervals (FR-8.3)
+	ActualMinutes int `json:"actual_minutes"`
+
+	// Categories Hours of each category including all its subcategories. A task counts once in each
+	// category of its categories and their ancestors (FR-8.2). Only categories with time.
+	Categories []CategoryMinutes `json:"categories"`
+	Days       []StatsDay        `json:"days"`
+
+	// Deviations Tasks with a deviation, and not done, partial or rescheduled tasks with a comment,
+	// ordered by planned start (FR-8.4)
+	Deviations []Instance `json:"deviations"`
+	From       time.Time  `json:"from"`
+
+	// LongRunningTimers Timers that run for longer than 12 hours and are counted only for the first 12
+	LongRunningTimers int        `json:"long_running_timers"`
+	PlanVsFact        PlanVsFact `json:"plan_vs_fact"`
+
+	// PlannedMinutes Busy time by the plan, a union of intervals; rescheduled originals are not in it
+	PlannedMinutes int `json:"planned_minutes"`
+
+	// Tasks Tasks grouped by title, the longest first
+	Tasks                []TaskMinutes `json:"tasks"`
+	To                   time.Time     `json:"to"`
+	UncategorizedMinutes int           `json:"uncategorized_minutes"`
+	UnplannedCount       int           `json:"unplanned_count"`
+
+	// UnplannedMinutes The part of the fact that belongs to tasks outside the plan (FR-8.6)
+	UnplannedMinutes int `json:"unplanned_minutes"`
+}
+
+// TaskMinutes defines model for TaskMinutes.
+type TaskMinutes struct {
+	Count   int    `json:"count"`
+	Minutes int    `json:"minutes"`
+	Title   string `json:"title"`
+}
 
 // TelegramLoginRequest defines model for TelegramLoginRequest.
 type TelegramLoginRequest struct {
@@ -545,6 +638,12 @@ type UpdateInstanceParams struct {
 // UpdateInstanceParamsScope defines parameters for UpdateInstance.
 type UpdateInstanceParamsScope string
 
+// GetStatsParams defines parameters for GetStats.
+type GetStatsParams struct {
+	From time.Time `form:"from" json:"from"`
+	To   time.Time `form:"to" json:"to"`
+}
+
 // LoginDevJSONRequestBody defines body for LoginDev for application/json ContentType.
 type LoginDevJSONRequestBody = DevLoginRequest
 
@@ -613,6 +712,9 @@ type ServerInterface interface {
 	// ListInstances Tasks planned within a time window
 	// (GET /instances)
 	ListInstances(w http.ResponseWriter, r *http.Request, params ListInstancesParams)
+	// ListRunningInstances Tasks whose timer is running, from whatever day they were started
+	// (GET /instances/running)
+	ListRunningInstances(w http.ResponseWriter, r *http.Request)
 	// CreateUnplanned Add a task outside the plan
 	// (POST /instances/unplanned)
 	CreateUnplanned(w http.ResponseWriter, r *http.Request)
@@ -646,6 +748,9 @@ type ServerInterface interface {
 	// GetSeries The template of a regular task
 	// (GET /series/{id})
 	GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId)
+	// GetStats Statistics of a period, by the fact
+	// (GET /stats)
+	GetStats(w http.ResponseWriter, r *http.Request, params GetStatsParams)
 	// CreateTask Create a one-off task
 	// (POST /tasks)
 	CreateTask(w http.ResponseWriter, r *http.Request)
@@ -721,6 +826,12 @@ func (_ Unimplemented) ListInstances(w http.ResponseWriter, r *http.Request, par
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListRunningInstances Tasks whose timer is running, from whatever day they were started
+// (GET /instances/running)
+func (_ Unimplemented) ListRunningInstances(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CreateUnplanned Add a task outside the plan
 // (POST /instances/unplanned)
 func (_ Unimplemented) CreateUnplanned(w http.ResponseWriter, r *http.Request) {
@@ -784,6 +895,12 @@ func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) 
 // GetSeries The template of a regular task
 // (GET /series/{id})
 func (_ Unimplemented) GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetStats Statistics of a period, by the fact
+// (GET /stats)
+func (_ Unimplemented) GetStats(w http.ResponseWriter, r *http.Request, params GetStatsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1039,6 +1156,20 @@ func (siw *ServerInterfaceWrapper) ListInstances(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInstances(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRunningInstances operation middleware
+func (siw *ServerInterfaceWrapper) ListRunningInstances(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRunningInstances(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1330,6 +1461,52 @@ func (siw *ServerInterfaceWrapper) GetSeries(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetStats operation middleware
+func (siw *ServerInterfaceWrapper) GetStats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetStatsParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetStats(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateTask operation middleware
 func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Request) {
 
@@ -1504,6 +1681,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/instances/{id}", wrapper.UpdateInstance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/instances/running", wrapper.ListRunningInstances)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/stats", wrapper.GetStats)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/instances/unplanned", wrapper.CreateUnplanned)
@@ -2085,6 +2268,41 @@ func (response ListInstances400JSONResponse) VisitListInstancesResponse(w http.R
 type ListInstances401JSONResponse struct{ UnauthorizedJSONResponse }
 
 func (response ListInstances401JSONResponse) VisitListInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRunningInstancesRequestObject struct {
+}
+
+type ListRunningInstancesResponseObject interface {
+	VisitListRunningInstancesResponse(w http.ResponseWriter) error
+}
+
+type ListRunningInstances200JSONResponse []Instance
+
+func (response ListRunningInstances200JSONResponse) VisitListRunningInstancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRunningInstances401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListRunningInstances401JSONResponse) VisitListRunningInstancesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2750,6 +2968,56 @@ func (response GetSeries404JSONResponse) VisitGetSeriesResponse(w http.ResponseW
 	return err
 }
 
+type GetStatsRequestObject struct {
+	Params GetStatsParams
+}
+
+type GetStatsResponseObject interface {
+	VisitGetStatsResponse(w http.ResponseWriter) error
+}
+
+type GetStats200JSONResponse StatsReport
+
+func (response GetStats200JSONResponse) VisitGetStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStats400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetStats400JSONResponse) VisitGetStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStats401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetStats401JSONResponse) VisitGetStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateTaskRequestObject struct {
 	Body *CreateTaskJSONRequestBody
 }
@@ -2835,6 +3103,9 @@ type StrictServerInterface interface {
 	// ListInstances Tasks planned within a time window
 	// (GET /instances)
 	ListInstances(ctx context.Context, request ListInstancesRequestObject) (ListInstancesResponseObject, error)
+	// ListRunningInstances Tasks whose timer is running, from whatever day they were started
+	// (GET /instances/running)
+	ListRunningInstances(ctx context.Context, request ListRunningInstancesRequestObject) (ListRunningInstancesResponseObject, error)
 	// CreateUnplanned Add a task outside the plan
 	// (POST /instances/unplanned)
 	CreateUnplanned(ctx context.Context, request CreateUnplannedRequestObject) (CreateUnplannedResponseObject, error)
@@ -2868,6 +3139,9 @@ type StrictServerInterface interface {
 	// GetSeries The template of a regular task
 	// (GET /series/{id})
 	GetSeries(ctx context.Context, request GetSeriesRequestObject) (GetSeriesResponseObject, error)
+	// GetStats Statistics of a period, by the fact
+	// (GET /stats)
+	GetStats(ctx context.Context, request GetStatsRequestObject) (GetStatsResponseObject, error)
 	// CreateTask Create a one-off task
 	// (POST /tasks)
 	CreateTask(ctx context.Context, request CreateTaskRequestObject) (CreateTaskResponseObject, error)
@@ -3223,6 +3497,30 @@ func (sh *strictHandler) ListInstances(w http.ResponseWriter, r *http.Request, p
 	}
 }
 
+// ListRunningInstances operation middleware
+func (sh *strictHandler) ListRunningInstances(w http.ResponseWriter, r *http.Request) {
+	var request ListRunningInstancesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRunningInstances(ctx, request.(ListRunningInstancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRunningInstances")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRunningInstancesResponseObject); ok {
+		if err := validResponse.VisitListRunningInstancesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateUnplanned operation middleware
 func (sh *strictHandler) CreateUnplanned(w http.ResponseWriter, r *http.Request) {
 	var request CreateUnplannedRequestObject
@@ -3533,6 +3831,32 @@ func (sh *strictHandler) GetSeries(w http.ResponseWriter, r *http.Request, id Se
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetSeriesResponseObject); ok {
 		if err := validResponse.VisitGetSeriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetStats operation middleware
+func (sh *strictHandler) GetStats(w http.ResponseWriter, r *http.Request, params GetStatsParams) {
+	var request GetStatsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetStats(ctx, request.(GetStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetStatsResponseObject); ok {
+		if err := validResponse.VisitGetStatsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
