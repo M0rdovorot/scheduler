@@ -47,6 +47,123 @@ func (e DeviationKind) Valid() bool {
 	}
 }
 
+// Defines values for HabitFrequency.
+const (
+	HabitFrequencyDaily        HabitFrequency = "daily"
+	HabitFrequencyTimesPerWeek HabitFrequency = "times_per_week"
+	HabitFrequencyWeekdays     HabitFrequency = "weekdays"
+)
+
+// Valid indicates whether the value is a known member of the HabitFrequency enum.
+func (e HabitFrequency) Valid() bool {
+	switch e {
+	case HabitFrequencyDaily:
+		return true
+	case HabitFrequencyTimesPerWeek:
+		return true
+	case HabitFrequencyWeekdays:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HabitKind.
+const (
+	HabitKindBoolean  HabitKind = "boolean"
+	HabitKindQuantity HabitKind = "quantity"
+)
+
+// Valid indicates whether the value is a known member of the HabitKind enum.
+func (e HabitKind) Valid() bool {
+	switch e {
+	case HabitKindBoolean:
+		return true
+	case HabitKindQuantity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HabitInputFrequency.
+const (
+	HabitInputFrequencyDaily        HabitInputFrequency = "daily"
+	HabitInputFrequencyTimesPerWeek HabitInputFrequency = "times_per_week"
+	HabitInputFrequencyWeekdays     HabitInputFrequency = "weekdays"
+)
+
+// Valid indicates whether the value is a known member of the HabitInputFrequency enum.
+func (e HabitInputFrequency) Valid() bool {
+	switch e {
+	case HabitInputFrequencyDaily:
+		return true
+	case HabitInputFrequencyTimesPerWeek:
+		return true
+	case HabitInputFrequencyWeekdays:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HabitInputKind.
+const (
+	HabitInputKindBoolean  HabitInputKind = "boolean"
+	HabitInputKindQuantity HabitInputKind = "quantity"
+)
+
+// Valid indicates whether the value is a known member of the HabitInputKind enum.
+func (e HabitInputKind) Valid() bool {
+	switch e {
+	case HabitInputKindBoolean:
+		return true
+	case HabitInputKindQuantity:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HabitPatchFrequency.
+const (
+	HabitPatchFrequencyDaily        HabitPatchFrequency = "daily"
+	HabitPatchFrequencyTimesPerWeek HabitPatchFrequency = "times_per_week"
+	HabitPatchFrequencyWeekdays     HabitPatchFrequency = "weekdays"
+)
+
+// Valid indicates whether the value is a known member of the HabitPatchFrequency enum.
+func (e HabitPatchFrequency) Valid() bool {
+	switch e {
+	case HabitPatchFrequencyDaily:
+		return true
+	case HabitPatchFrequencyTimesPerWeek:
+		return true
+	case HabitPatchFrequencyWeekdays:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HabitStreaksUnit.
+const (
+	HabitStreaksUnitDay  HabitStreaksUnit = "day"
+	HabitStreaksUnitWeek HabitStreaksUnit = "week"
+)
+
+// Valid indicates whether the value is a known member of the HabitStreaksUnit enum.
+func (e HabitStreaksUnit) Valid() bool {
+	switch e {
+	case HabitStreaksUnitDay:
+		return true
+	case HabitStreaksUnitWeek:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Ok          HealthStatus = "ok"
@@ -154,19 +271,19 @@ func (e TrackingPatchStatus) Valid() bool {
 
 // Defines values for ViewMode.
 const (
-	Day       ViewMode = "day"
-	ThreeDays ViewMode = "three_days"
-	Week      ViewMode = "week"
+	ViewModeDay       ViewMode = "day"
+	ViewModeThreeDays ViewMode = "three_days"
+	ViewModeWeek      ViewMode = "week"
 )
 
 // Valid indicates whether the value is a known member of the ViewMode enum.
 func (e ViewMode) Valid() bool {
 	switch e {
-	case Day:
+	case ViewModeDay:
 		return true
-	case ThreeDays:
+	case ViewModeThreeDays:
 		return true
-	case Week:
+	case ViewModeWeek:
 		return true
 	default:
 		return false
@@ -322,6 +439,141 @@ type Error struct {
 	Message string  `json:"message"`
 }
 
+// Habit defines model for Habit.
+type Habit struct {
+	ArchivedAt *time.Time         `json:"archived_at"`
+	Color      string             `json:"color"`
+	CreatedAt  time.Time          `json:"created_at"`
+	Frequency  HabitFrequency     `json:"frequency"`
+	Id         openapi_types.UUID `json:"id"`
+	Kind       HabitKind          `json:"kind"`
+
+	// Placement Where the habit sits in the day grid; null when it is not in the grid
+	Placement *HabitPlacement `json:"placement"`
+
+	// TargetValue The value that makes a day done; 1 for a yes/no habit
+	TargetValue  int    `json:"target_value"`
+	TimesPerWeek *int   `json:"times_per_week"`
+	Title        string `json:"title"`
+
+	// Unit Unit of a quantity ("стаканов", "мин"); empty for yes/no
+	Unit string `json:"unit"`
+
+	// Weekdays ISO weekdays (1 = Monday … 7 = Sunday); empty unless `frequency` is `weekdays`
+	Weekdays []int `json:"weekdays"`
+}
+
+// HabitFrequency defines model for Habit.Frequency.
+type HabitFrequency string
+
+// HabitKind defines model for Habit.Kind.
+type HabitKind string
+
+// HabitDay defines model for HabitDay.
+type HabitDay struct {
+	Date openapi_types.Date `json:"date"`
+	Done bool               `json:"done"`
+
+	// Planned False on a day that is not in the schedule, and on every day of a weekly goal
+	Planned bool `json:"planned"`
+	Value   int  `json:"value"`
+}
+
+// HabitInput defines model for HabitInput.
+type HabitInput struct {
+	Color     string              `json:"color"`
+	Frequency HabitInputFrequency `json:"frequency"`
+	Kind      HabitInputKind      `json:"kind"`
+	Placement *HabitPlacement     `json:"placement,omitempty"`
+
+	// TargetValue Required for a quantity; ignored for yes/no
+	TargetValue  *int    `json:"target_value,omitempty"`
+	TimesPerWeek *int    `json:"times_per_week,omitempty"`
+	Title        string  `json:"title"`
+	Unit         *string `json:"unit,omitempty"`
+	Weekdays     *[]int  `json:"weekdays,omitempty"`
+}
+
+// HabitInputFrequency defines model for HabitInput.Frequency.
+type HabitInputFrequency string
+
+// HabitInputKind defines model for HabitInput.Kind.
+type HabitInputKind string
+
+// HabitLog defines model for HabitLog.
+type HabitLog struct {
+	Value int `json:"value"`
+}
+
+// HabitPatch defines model for HabitPatch.
+type HabitPatch struct {
+	Color        *string              `json:"color,omitempty"`
+	Frequency    *HabitPatchFrequency `json:"frequency,omitempty"`
+	TargetValue  *int                 `json:"target_value,omitempty"`
+	TimesPerWeek *int                 `json:"times_per_week,omitempty"`
+	Title        *string              `json:"title,omitempty"`
+	Unit         *string              `json:"unit,omitempty"`
+	Weekdays     *[]int               `json:"weekdays,omitempty"`
+}
+
+// HabitPatchFrequency defines model for HabitPatch.Frequency.
+type HabitPatchFrequency string
+
+// HabitPlacement defines model for HabitPlacement.
+type HabitPlacement struct {
+	DurationMinutes int `json:"duration_minutes"`
+
+	// Time Local time of day
+	//
+	// Example: 07:30
+	Time string `json:"time"`
+}
+
+// HabitStats defines model for HabitStats.
+type HabitStats struct {
+	Days      []HabitDay `json:"days"`
+	Habit     Habit      `json:"habit"`
+	Percent30 *int       `json:"percent_30"`
+	Percent90 *int       `json:"percent_90"`
+
+	// PercentAll Share of done days (or weeks) over the whole history; null while nothing is over
+	PercentAll *int               `json:"percent_all"`
+	Streaks    HabitStreaks       `json:"streaks"`
+	Today      openapi_types.Date `json:"today"`
+}
+
+// HabitStreaks defines model for HabitStreaks.
+type HabitStreaks struct {
+	Best    int `json:"best"`
+	Current int `json:"current"`
+
+	// Unit Planned days in a row, or weeks in a row for a weekly goal
+	Unit HabitStreaksUnit `json:"unit"`
+}
+
+// HabitStreaksUnit Planned days in a row, or weeks in a row for a weekly goal
+type HabitStreaksUnit string
+
+// HabitTodayItem defines model for HabitTodayItem.
+type HabitTodayItem struct {
+	Done    bool         `json:"done"`
+	Habit   Habit        `json:"habit"`
+	Streaks HabitStreaks `json:"streaks"`
+
+	// Value Today's value; 0 without a mark
+	Value int `json:"value"`
+
+	// WeekDone Done days of the current week (Monday to Sunday)
+	WeekDone int `json:"week_done"`
+}
+
+// HabitsToday defines model for HabitsToday.
+type HabitsToday struct {
+	// Date Today's local date
+	Date  openapi_types.Date `json:"date"`
+	Items []HabitTodayItem   `json:"items"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -342,9 +594,12 @@ type Instance struct {
 	Description string               `json:"description"`
 
 	// Deviations Computed from the plan, the fact and the user's threshold; never stored
-	Deviations []Deviation        `json:"deviations"`
-	Id         openapi_types.UUID `json:"id"`
-	PlannedEnd *time.Time         `json:"planned_end"`
+	Deviations []Deviation `json:"deviations"`
+
+	// HabitId Set for occurrences of a habit that is placed in the grid
+	HabitId    *openapi_types.UUID `json:"habit_id"`
+	Id         openapi_types.UUID  `json:"id"`
+	PlannedEnd *time.Time          `json:"planned_end"`
 
 	// PlannedStart Null for a task outside the plan
 	PlannedStart    *time.Time    `json:"planned_start"`
@@ -589,6 +844,9 @@ type ViewMode string
 // CategoryId defines model for CategoryId.
 type CategoryId = openapi_types.UUID
 
+// HabitId defines model for HabitId.
+type HabitId = openapi_types.UUID
+
 // InstanceId defines model for InstanceId.
 type InstanceId = openapi_types.UUID
 
@@ -609,6 +867,12 @@ type SessionIssued = Session
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
+
+// GetHabitStatsParams defines parameters for GetHabitStats.
+type GetHabitStatsParams struct {
+	From openapi_types.Date `form:"from" json:"from"`
+	To   openapi_types.Date `form:"to" json:"to"`
+}
 
 // ListInstancesParams defines parameters for ListInstances.
 type ListInstancesParams struct {
@@ -659,6 +923,18 @@ type UpdateCategoryJSONRequestBody = UpdateCategoryRequest
 // MoveCategoryJSONRequestBody defines body for MoveCategory for application/json ContentType.
 type MoveCategoryJSONRequestBody = MoveCategoryRequest
 
+// CreateHabitJSONRequestBody defines body for CreateHabit for application/json ContentType.
+type CreateHabitJSONRequestBody = HabitInput
+
+// UpdateHabitJSONRequestBody defines body for UpdateHabit for application/json ContentType.
+type UpdateHabitJSONRequestBody = HabitPatch
+
+// SetHabitLogJSONRequestBody defines body for SetHabitLog for application/json ContentType.
+type SetHabitLogJSONRequestBody = HabitLog
+
+// SetHabitPlacementJSONRequestBody defines body for SetHabitPlacement for application/json ContentType.
+type SetHabitPlacementJSONRequestBody = HabitPlacement
+
 // CreateUnplannedJSONRequestBody defines body for CreateUnplanned for application/json ContentType.
 type CreateUnplannedJSONRequestBody = UnplannedRequest
 
@@ -706,6 +982,42 @@ type ServerInterface interface {
 	// UnarchiveCategory Restore one archived category
 	// (POST /categories/{id}/unarchive)
 	UnarchiveCategory(w http.ResponseWriter, r *http.Request, id CategoryId)
+	// ListHabits All habits of the user, archived ones included
+	// (GET /habits)
+	ListHabits(w http.ResponseWriter, r *http.Request)
+	// CreateHabit Create a habit
+	// (POST /habits)
+	CreateHabit(w http.ResponseWriter, r *http.Request)
+	// GetHabitsToday Habits for today, with today's marks
+	// (GET /habits/today)
+	GetHabitsToday(w http.ResponseWriter, r *http.Request)
+	// DeleteHabit Delete a habit with its marks
+	// (DELETE /habits/{id})
+	DeleteHabit(w http.ResponseWriter, r *http.Request, id HabitId)
+	// GetHabit One habit
+	// (GET /habits/{id})
+	GetHabit(w http.ResponseWriter, r *http.Request, id HabitId)
+	// UpdateHabit Change a habit
+	// (PATCH /habits/{id})
+	UpdateHabit(w http.ResponseWriter, r *http.Request, id HabitId)
+	// ArchiveHabit Archive a habit
+	// (POST /habits/{id}/archive)
+	ArchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId)
+	// SetHabitLog Set the value of a habit on a local date
+	// (PUT /habits/{id}/logs/{date})
+	SetHabitLog(w http.ResponseWriter, r *http.Request, id HabitId, date openapi_types.Date)
+	// ClearHabitPlacement Take a habit out of the grid
+	// (DELETE /habits/{id}/placement)
+	ClearHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId)
+	// SetHabitPlacement Put a habit in the grid, or change its time and length there
+	// (PUT /habits/{id}/placement)
+	SetHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId)
+	// GetHabitStats Streaks, percentages and the heat map of a habit
+	// (GET /habits/{id}/stats)
+	GetHabitStats(w http.ResponseWriter, r *http.Request, id HabitId, params GetHabitStatsParams)
+	// UnarchiveHabit Bring an archived habit back
+	// (POST /habits/{id}/unarchive)
+	UnarchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId)
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -811,6 +1123,78 @@ func (_ Unimplemented) MoveCategory(w http.ResponseWriter, r *http.Request, id C
 // UnarchiveCategory Restore one archived category
 // (POST /categories/{id}/unarchive)
 func (_ Unimplemented) UnarchiveCategory(w http.ResponseWriter, r *http.Request, id CategoryId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListHabits All habits of the user, archived ones included
+// (GET /habits)
+func (_ Unimplemented) ListHabits(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateHabit Create a habit
+// (POST /habits)
+func (_ Unimplemented) CreateHabit(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetHabitsToday Habits for today, with today's marks
+// (GET /habits/today)
+func (_ Unimplemented) GetHabitsToday(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteHabit Delete a habit with its marks
+// (DELETE /habits/{id})
+func (_ Unimplemented) DeleteHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetHabit One habit
+// (GET /habits/{id})
+func (_ Unimplemented) GetHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateHabit Change a habit
+// (PATCH /habits/{id})
+func (_ Unimplemented) UpdateHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ArchiveHabit Archive a habit
+// (POST /habits/{id}/archive)
+func (_ Unimplemented) ArchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetHabitLog Set the value of a habit on a local date
+// (PUT /habits/{id}/logs/{date})
+func (_ Unimplemented) SetHabitLog(w http.ResponseWriter, r *http.Request, id HabitId, date openapi_types.Date) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClearHabitPlacement Take a habit out of the grid
+// (DELETE /habits/{id}/placement)
+func (_ Unimplemented) ClearHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetHabitPlacement Put a habit in the grid, or change its time and length there
+// (PUT /habits/{id}/placement)
+func (_ Unimplemented) SetHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetHabitStats Streaks, percentages and the heat map of a habit
+// (GET /habits/{id}/stats)
+func (_ Unimplemented) GetHabitStats(w http.ResponseWriter, r *http.Request, id HabitId, params GetHabitStatsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnarchiveHabit Bring an archived habit back
+// (POST /habits/{id}/unarchive)
+func (_ Unimplemented) UnarchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1096,6 +1480,320 @@ func (siw *ServerInterfaceWrapper) UnarchiveCategory(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UnarchiveCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHabits operation middleware
+func (siw *ServerInterfaceWrapper) ListHabits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHabits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateHabit operation middleware
+func (siw *ServerInterfaceWrapper) CreateHabit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateHabit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHabitsToday operation middleware
+func (siw *ServerInterfaceWrapper) GetHabitsToday(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHabitsToday(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteHabit operation middleware
+func (siw *ServerInterfaceWrapper) DeleteHabit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteHabit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHabit operation middleware
+func (siw *ServerInterfaceWrapper) GetHabit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHabit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateHabit operation middleware
+func (siw *ServerInterfaceWrapper) UpdateHabit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateHabit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveHabit operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveHabit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveHabit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetHabitLog operation middleware
+func (siw *ServerInterfaceWrapper) SetHabitLog(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "date" -------------
+	var date openapi_types.Date
+
+	err = runtime.BindStyledParameterWithOptions("simple", "date", chi.URLParam(r, "date"), &date, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "date", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "date", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetHabitLog(w, r, id, date)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearHabitPlacement operation middleware
+func (siw *ServerInterfaceWrapper) ClearHabitPlacement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearHabitPlacement(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetHabitPlacement operation middleware
+func (siw *ServerInterfaceWrapper) SetHabitPlacement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetHabitPlacement(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHabitStats operation middleware
+func (siw *ServerInterfaceWrapper) GetHabitStats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetHabitStatsParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHabitStats(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnarchiveHabit operation middleware
+func (siw *ServerInterfaceWrapper) UnarchiveHabit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id HabitId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnarchiveHabit(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1709,6 +2407,42 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/series/{id}", wrapper.GetSeries)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/habits", wrapper.ListHabits)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/habits", wrapper.CreateHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/habits/today", wrapper.GetHabitsToday)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/habits/{id}", wrapper.DeleteHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/habits/{id}", wrapper.GetHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/habits/{id}", wrapper.UpdateHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/habits/{id}/archive", wrapper.ArchiveHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/habits/{id}/unarchive", wrapper.UnarchiveHabit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/habits/{id}/placement", wrapper.ClearHabitPlacement)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/habits/{id}/placement", wrapper.SetHabitPlacement)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/habits/{id}/logs/{date}", wrapper.SetHabitLog)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/habits/{id}/stats", wrapper.GetHabitStats)
+	})
 
 	return r
 }
@@ -2183,6 +2917,625 @@ func (response UnarchiveCategory401JSONResponse) VisitUnarchiveCategoryResponse(
 type UnarchiveCategory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UnarchiveCategory404JSONResponse) VisitUnarchiveCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHabitsRequestObject struct {
+}
+
+type ListHabitsResponseObject interface {
+	VisitListHabitsResponse(w http.ResponseWriter) error
+}
+
+type ListHabits200JSONResponse []Habit
+
+func (response ListHabits200JSONResponse) VisitListHabitsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHabits401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListHabits401JSONResponse) VisitListHabitsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHabitRequestObject struct {
+	Body *CreateHabitJSONRequestBody
+}
+
+type CreateHabitResponseObject interface {
+	VisitCreateHabitResponse(w http.ResponseWriter) error
+}
+
+type CreateHabit201JSONResponse Habit
+
+func (response CreateHabit201JSONResponse) VisitCreateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHabit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateHabit400JSONResponse) VisitCreateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateHabit401JSONResponse) VisitCreateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitsTodayRequestObject struct {
+}
+
+type GetHabitsTodayResponseObject interface {
+	VisitGetHabitsTodayResponse(w http.ResponseWriter) error
+}
+
+type GetHabitsToday200JSONResponse HabitsToday
+
+func (response GetHabitsToday200JSONResponse) VisitGetHabitsTodayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitsToday401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetHabitsToday401JSONResponse) VisitGetHabitsTodayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteHabitRequestObject struct {
+	Id HabitId `json:"id"`
+}
+
+type DeleteHabitResponseObject interface {
+	VisitDeleteHabitResponse(w http.ResponseWriter) error
+}
+
+type DeleteHabit204Response struct {
+}
+
+func (response DeleteHabit204Response) VisitDeleteHabitResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteHabit401JSONResponse) VisitDeleteHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteHabit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteHabit404JSONResponse) VisitDeleteHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitRequestObject struct {
+	Id HabitId `json:"id"`
+}
+
+type GetHabitResponseObject interface {
+	VisitGetHabitResponse(w http.ResponseWriter) error
+}
+
+type GetHabit200JSONResponse Habit
+
+func (response GetHabit200JSONResponse) VisitGetHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetHabit401JSONResponse) VisitGetHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetHabit404JSONResponse) VisitGetHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateHabitRequestObject struct {
+	Id   HabitId `json:"id"`
+	Body *UpdateHabitJSONRequestBody
+}
+
+type UpdateHabitResponseObject interface {
+	VisitUpdateHabitResponse(w http.ResponseWriter) error
+}
+
+type UpdateHabit200JSONResponse Habit
+
+func (response UpdateHabit200JSONResponse) VisitUpdateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateHabit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateHabit400JSONResponse) VisitUpdateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateHabit401JSONResponse) VisitUpdateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateHabit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateHabit404JSONResponse) VisitUpdateHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveHabitRequestObject struct {
+	Id HabitId `json:"id"`
+}
+
+type ArchiveHabitResponseObject interface {
+	VisitArchiveHabitResponse(w http.ResponseWriter) error
+}
+
+type ArchiveHabit200JSONResponse Habit
+
+func (response ArchiveHabit200JSONResponse) VisitArchiveHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ArchiveHabit401JSONResponse) VisitArchiveHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveHabit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ArchiveHabit404JSONResponse) VisitArchiveHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitLogRequestObject struct {
+	Id   HabitId            `json:"id"`
+	Date openapi_types.Date `json:"date"`
+	Body *SetHabitLogJSONRequestBody
+}
+
+type SetHabitLogResponseObject interface {
+	VisitSetHabitLogResponse(w http.ResponseWriter) error
+}
+
+type SetHabitLog204Response struct {
+}
+
+func (response SetHabitLog204Response) VisitSetHabitLogResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetHabitLog400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetHabitLog400JSONResponse) VisitSetHabitLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitLog401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetHabitLog401JSONResponse) VisitSetHabitLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitLog404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetHabitLog404JSONResponse) VisitSetHabitLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearHabitPlacementRequestObject struct {
+	Id HabitId `json:"id"`
+}
+
+type ClearHabitPlacementResponseObject interface {
+	VisitClearHabitPlacementResponse(w http.ResponseWriter) error
+}
+
+type ClearHabitPlacement200JSONResponse Habit
+
+func (response ClearHabitPlacement200JSONResponse) VisitClearHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearHabitPlacement401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ClearHabitPlacement401JSONResponse) VisitClearHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearHabitPlacement404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClearHabitPlacement404JSONResponse) VisitClearHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitPlacementRequestObject struct {
+	Id   HabitId `json:"id"`
+	Body *SetHabitPlacementJSONRequestBody
+}
+
+type SetHabitPlacementResponseObject interface {
+	VisitSetHabitPlacementResponse(w http.ResponseWriter) error
+}
+
+type SetHabitPlacement200JSONResponse Habit
+
+func (response SetHabitPlacement200JSONResponse) VisitSetHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitPlacement400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetHabitPlacement400JSONResponse) VisitSetHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitPlacement401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetHabitPlacement401JSONResponse) VisitSetHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHabitPlacement404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetHabitPlacement404JSONResponse) VisitSetHabitPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitStatsRequestObject struct {
+	Id     HabitId `json:"id"`
+	Params GetHabitStatsParams
+}
+
+type GetHabitStatsResponseObject interface {
+	VisitGetHabitStatsResponse(w http.ResponseWriter) error
+}
+
+type GetHabitStats200JSONResponse HabitStats
+
+func (response GetHabitStats200JSONResponse) VisitGetHabitStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitStats400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetHabitStats400JSONResponse) VisitGetHabitStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitStats401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetHabitStats401JSONResponse) VisitGetHabitStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHabitStats404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetHabitStats404JSONResponse) VisitGetHabitStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveHabitRequestObject struct {
+	Id HabitId `json:"id"`
+}
+
+type UnarchiveHabitResponseObject interface {
+	VisitUnarchiveHabitResponse(w http.ResponseWriter) error
+}
+
+type UnarchiveHabit200JSONResponse Habit
+
+func (response UnarchiveHabit200JSONResponse) VisitUnarchiveHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveHabit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UnarchiveHabit401JSONResponse) VisitUnarchiveHabitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveHabit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UnarchiveHabit404JSONResponse) VisitUnarchiveHabitResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3097,6 +4450,42 @@ type StrictServerInterface interface {
 	// UnarchiveCategory Restore one archived category
 	// (POST /categories/{id}/unarchive)
 	UnarchiveCategory(ctx context.Context, request UnarchiveCategoryRequestObject) (UnarchiveCategoryResponseObject, error)
+	// ListHabits All habits of the user, archived ones included
+	// (GET /habits)
+	ListHabits(ctx context.Context, request ListHabitsRequestObject) (ListHabitsResponseObject, error)
+	// CreateHabit Create a habit
+	// (POST /habits)
+	CreateHabit(ctx context.Context, request CreateHabitRequestObject) (CreateHabitResponseObject, error)
+	// GetHabitsToday Habits for today, with today's marks
+	// (GET /habits/today)
+	GetHabitsToday(ctx context.Context, request GetHabitsTodayRequestObject) (GetHabitsTodayResponseObject, error)
+	// DeleteHabit Delete a habit with its marks
+	// (DELETE /habits/{id})
+	DeleteHabit(ctx context.Context, request DeleteHabitRequestObject) (DeleteHabitResponseObject, error)
+	// GetHabit One habit
+	// (GET /habits/{id})
+	GetHabit(ctx context.Context, request GetHabitRequestObject) (GetHabitResponseObject, error)
+	// UpdateHabit Change a habit
+	// (PATCH /habits/{id})
+	UpdateHabit(ctx context.Context, request UpdateHabitRequestObject) (UpdateHabitResponseObject, error)
+	// ArchiveHabit Archive a habit
+	// (POST /habits/{id}/archive)
+	ArchiveHabit(ctx context.Context, request ArchiveHabitRequestObject) (ArchiveHabitResponseObject, error)
+	// SetHabitLog Set the value of a habit on a local date
+	// (PUT /habits/{id}/logs/{date})
+	SetHabitLog(ctx context.Context, request SetHabitLogRequestObject) (SetHabitLogResponseObject, error)
+	// ClearHabitPlacement Take a habit out of the grid
+	// (DELETE /habits/{id}/placement)
+	ClearHabitPlacement(ctx context.Context, request ClearHabitPlacementRequestObject) (ClearHabitPlacementResponseObject, error)
+	// SetHabitPlacement Put a habit in the grid, or change its time and length there
+	// (PUT /habits/{id}/placement)
+	SetHabitPlacement(ctx context.Context, request SetHabitPlacementRequestObject) (SetHabitPlacementResponseObject, error)
+	// GetHabitStats Streaks, percentages and the heat map of a habit
+	// (GET /habits/{id}/stats)
+	GetHabitStats(ctx context.Context, request GetHabitStatsRequestObject) (GetHabitStatsResponseObject, error)
+	// UnarchiveHabit Bring an archived habit back
+	// (POST /habits/{id}/unarchive)
+	UnarchiveHabit(ctx context.Context, request UnarchiveHabitRequestObject) (UnarchiveHabitResponseObject, error)
 	// GetHealth Liveness and database readiness probe
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -3440,6 +4829,342 @@ func (sh *strictHandler) UnarchiveCategory(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UnarchiveCategoryResponseObject); ok {
 		if err := validResponse.VisitUnarchiveCategoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListHabits operation middleware
+func (sh *strictHandler) ListHabits(w http.ResponseWriter, r *http.Request) {
+	var request ListHabitsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListHabits(ctx, request.(ListHabitsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListHabits")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListHabitsResponseObject); ok {
+		if err := validResponse.VisitListHabitsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateHabit operation middleware
+func (sh *strictHandler) CreateHabit(w http.ResponseWriter, r *http.Request) {
+	var request CreateHabitRequestObject
+
+	var body CreateHabitJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateHabit(ctx, request.(CreateHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateHabitResponseObject); ok {
+		if err := validResponse.VisitCreateHabitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHabitsToday operation middleware
+func (sh *strictHandler) GetHabitsToday(w http.ResponseWriter, r *http.Request) {
+	var request GetHabitsTodayRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHabitsToday(ctx, request.(GetHabitsTodayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHabitsToday")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHabitsTodayResponseObject); ok {
+		if err := validResponse.VisitGetHabitsTodayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteHabit operation middleware
+func (sh *strictHandler) DeleteHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request DeleteHabitRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteHabit(ctx, request.(DeleteHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteHabitResponseObject); ok {
+		if err := validResponse.VisitDeleteHabitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHabit operation middleware
+func (sh *strictHandler) GetHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request GetHabitRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHabit(ctx, request.(GetHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHabitResponseObject); ok {
+		if err := validResponse.VisitGetHabitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateHabit operation middleware
+func (sh *strictHandler) UpdateHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request UpdateHabitRequestObject
+
+	request.Id = id
+
+	var body UpdateHabitJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateHabit(ctx, request.(UpdateHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateHabitResponseObject); ok {
+		if err := validResponse.VisitUpdateHabitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveHabit operation middleware
+func (sh *strictHandler) ArchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request ArchiveHabitRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveHabit(ctx, request.(ArchiveHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveHabitResponseObject); ok {
+		if err := validResponse.VisitArchiveHabitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetHabitLog operation middleware
+func (sh *strictHandler) SetHabitLog(w http.ResponseWriter, r *http.Request, id HabitId, date openapi_types.Date) {
+	var request SetHabitLogRequestObject
+
+	request.Id = id
+	request.Date = date
+
+	var body SetHabitLogJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetHabitLog(ctx, request.(SetHabitLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetHabitLog")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetHabitLogResponseObject); ok {
+		if err := validResponse.VisitSetHabitLogResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearHabitPlacement operation middleware
+func (sh *strictHandler) ClearHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request ClearHabitPlacementRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearHabitPlacement(ctx, request.(ClearHabitPlacementRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearHabitPlacement")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearHabitPlacementResponseObject); ok {
+		if err := validResponse.VisitClearHabitPlacementResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetHabitPlacement operation middleware
+func (sh *strictHandler) SetHabitPlacement(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request SetHabitPlacementRequestObject
+
+	request.Id = id
+
+	var body SetHabitPlacementJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetHabitPlacement(ctx, request.(SetHabitPlacementRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetHabitPlacement")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetHabitPlacementResponseObject); ok {
+		if err := validResponse.VisitSetHabitPlacementResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHabitStats operation middleware
+func (sh *strictHandler) GetHabitStats(w http.ResponseWriter, r *http.Request, id HabitId, params GetHabitStatsParams) {
+	var request GetHabitStatsRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHabitStats(ctx, request.(GetHabitStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHabitStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHabitStatsResponseObject); ok {
+		if err := validResponse.VisitGetHabitStatsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnarchiveHabit operation middleware
+func (sh *strictHandler) UnarchiveHabit(w http.ResponseWriter, r *http.Request, id HabitId) {
+	var request UnarchiveHabitRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnarchiveHabit(ctx, request.(UnarchiveHabitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnarchiveHabit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnarchiveHabitResponseObject); ok {
+		if err := validResponse.VisitUnarchiveHabitResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

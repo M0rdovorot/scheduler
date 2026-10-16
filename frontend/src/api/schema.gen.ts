@@ -474,6 +474,188 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/habits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All habits of the user, archived ones included */
+        get: operations["listHabits"];
+        put?: never;
+        /**
+         * Create a habit
+         * @description With `placement` the habit is also put in the grid: a regular task that starts today.
+         *     Only for `daily` and `weekdays`.
+         */
+        post: operations["createHabit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Habits for today, with today's marks
+         * @description Habits planned for today's weekday, and those with a weekly goal (they can be worked on
+         *     any day). Archived habits are left out. "Today" is the local date of the user.
+         */
+        get: operations["getHabitsToday"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        /** One habit */
+        get: operations["getHabit"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a habit with its marks
+         * @description It leaves the grid. Occurrences that were marked stay in the calendar as ordinary tasks.
+         */
+        delete: operations["deleteHabit"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a habit
+         * @description The kind cannot be changed. When `frequency` is given, the schedule is replaced as a
+         *     whole by `frequency`, `weekdays` and `times_per_week`. A new title or schedule reaches the
+         *     habit's series in the grid.
+         */
+        patch: operations["updateHabit"];
+        trace?: never;
+    };
+    "/habits/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a habit
+         * @description Its marks stay. It leaves the grid; marked occurrences stay in the calendar.
+         */
+        post: operations["archiveHabit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/{id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bring an archived habit back
+         * @description It does not go back to the grid by itself.
+         */
+        post: operations["unarchiveHabit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/{id}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put a habit in the grid, or change its time and length there
+         * @description Only for `daily` and `weekdays`. The habit becomes a regular task that starts today;
+         *     marked occurrences keep their time.
+         */
+        put: operations["setHabitPlacement"];
+        post?: never;
+        /**
+         * Take a habit out of the grid
+         * @description Planned occurrences go; marked ones stay as history.
+         */
+        delete: operations["clearHabitPlacement"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/{id}/logs/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the value of a habit on a local date
+         * @description 1 or 0 for a yes/no habit; the accumulated value for a quantity. Zero removes the mark.
+         *     The value replaces the one that is there, including what a done occurrence in the grid
+         *     credited. A day that has not come yet is refused.
+         */
+        put: operations["setHabitLog"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/habits/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Streaks, percentages and the heat map of a habit
+         * @description Rules are in `docs/requirements.md` (assumption 8). `days` covers `from`..`to`, both
+         *     included, at most 366 days. Percentages and streaks do not depend on the range.
+         */
+        get: operations["getHabitStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -600,6 +782,11 @@ export interface components {
              * @description Set for occurrences of a regular task; see `GET /series/{id}`
              */
             series_id: string | null;
+            /**
+             * Format: uuid
+             * @description Set for occurrences of a habit that is placed in the grid
+             */
+            habit_id: string | null;
             title: string;
             description: string;
             /**
@@ -792,6 +979,109 @@ export interface components {
              */
             deviations: components["schemas"]["Instance"][];
         };
+        HabitPlacement: {
+            /**
+             * @description Local time of day
+             * @example 07:30
+             */
+            time: string;
+            duration_minutes: number;
+        };
+        Habit: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            /** @enum {string} */
+            kind: "boolean" | "quantity";
+            /** @description The value that makes a day done; 1 for a yes/no habit */
+            target_value: number;
+            /** @description Unit of a quantity ("стаканов", "мин"); empty for yes/no */
+            unit: string;
+            /** @enum {string} */
+            frequency: "daily" | "weekdays" | "times_per_week";
+            /** @description ISO weekdays (1 = Monday … 7 = Sunday); empty unless `frequency` is `weekdays` */
+            weekdays: number[];
+            times_per_week: number | null;
+            color: string;
+            /** Format: date-time */
+            archived_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Where the habit sits in the day grid; null when it is not in the grid */
+            placement: components["schemas"]["HabitPlacement"] | null;
+        };
+        HabitInput: {
+            title: string;
+            /** @enum {string} */
+            kind: "boolean" | "quantity";
+            /** @description Required for a quantity; ignored for yes/no */
+            target_value?: number;
+            unit?: string;
+            /** @enum {string} */
+            frequency: "daily" | "weekdays" | "times_per_week";
+            weekdays?: number[];
+            times_per_week?: number;
+            color: string;
+            placement?: components["schemas"]["HabitPlacement"];
+        };
+        HabitPatch: {
+            title?: string;
+            target_value?: number;
+            unit?: string;
+            /** @enum {string} */
+            frequency?: "daily" | "weekdays" | "times_per_week";
+            weekdays?: number[];
+            times_per_week?: number;
+            color?: string;
+        };
+        HabitLog: {
+            value: number;
+        };
+        HabitStreaks: {
+            current: number;
+            best: number;
+            /**
+             * @description Planned days in a row, or weeks in a row for a weekly goal
+             * @enum {string}
+             */
+            unit: "day" | "week";
+        };
+        HabitTodayItem: {
+            habit: components["schemas"]["Habit"];
+            /** @description Today's value; 0 without a mark */
+            value: number;
+            done: boolean;
+            /** @description Done days of the current week (Monday to Sunday) */
+            week_done: number;
+            streaks: components["schemas"]["HabitStreaks"];
+        };
+        HabitsToday: {
+            /**
+             * Format: date
+             * @description Today's local date
+             */
+            date: string;
+            items: components["schemas"]["HabitTodayItem"][];
+        };
+        HabitDay: {
+            /** Format: date */
+            date: string;
+            value: number;
+            done: boolean;
+            /** @description False on a day that is not in the schedule, and on every day of a weekly goal */
+            planned: boolean;
+        };
+        HabitStats: {
+            habit: components["schemas"]["Habit"];
+            /** Format: date */
+            today: string;
+            streaks: components["schemas"]["HabitStreaks"];
+            /** @description Share of done days (or weeks) over the whole history; null while nothing is over */
+            percent_all: number | null;
+            percent_30: number | null;
+            percent_90: number | null;
+            days: components["schemas"]["HabitDay"][];
+        };
     };
     responses: {
         /** @description Session token and the signed-in user */
@@ -841,6 +1131,7 @@ export interface components {
         Scope: "this" | "following" | "all";
         InstanceId: string;
         CategoryId: string;
+        HabitId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1486,6 +1777,306 @@ export interface operations {
                     "application/json": components["schemas"]["Series"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listHabits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Habits, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitInput"];
+            };
+        };
+        responses: {
+            /** @description Created habit */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getHabitsToday: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Today's list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitsToday"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    archiveHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    unarchiveHabit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setHabitPlacement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitPlacement"];
+            };
+        };
+        responses: {
+            /** @description Habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    clearHabitPlacement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Habit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Habit"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setHabitLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HabitLog"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getHabitStats: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["HabitId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HabitStats"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

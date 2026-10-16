@@ -79,9 +79,9 @@ func (q *Queries) CopySeriesCategoriesToInstances(ctx context.Context, arg CopyS
 }
 
 const createSeries = `-- name: CreateSeries :one
-INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at
+INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, habit_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id
 `
 
 type CreateSeriesParams struct {
@@ -92,6 +92,7 @@ type CreateSeriesParams struct {
 	DtstartLocal    time.Time
 	Timezone        string
 	DurationMinutes int32
+	HabitID         uuid.NullUUID
 }
 
 func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (TaskSeries, error) {
@@ -103,6 +104,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Tas
 		arg.DtstartLocal,
 		arg.Timezone,
 		arg.DurationMinutes,
+		arg.HabitID,
 	)
 	var i TaskSeries
 	err := row.Scan(
@@ -116,6 +118,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Tas
 		&i.DurationMinutes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HabitID,
 	)
 	return i, err
 }
@@ -171,7 +174,7 @@ func (q *Queries) DeleteSeriesInstances(ctx context.Context, arg DeleteSeriesIns
 }
 
 const getSeries = `-- name: GetSeries :one
-SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at FROM task_series WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id FROM task_series WHERE id = $1 AND user_id = $2
 `
 
 type GetSeriesParams struct {
@@ -193,12 +196,13 @@ func (q *Queries) GetSeries(ctx context.Context, arg GetSeriesParams) (TaskSerie
 		&i.DurationMinutes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.HabitID,
 	)
 	return i, err
 }
 
 const listSeries = `-- name: ListSeries :many
-SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at FROM task_series WHERE user_id = $1 ORDER BY created_at, id
+SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id FROM task_series WHERE user_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListSeries(ctx context.Context, userID uuid.UUID) ([]TaskSeries, error) {
@@ -221,6 +225,7 @@ func (q *Queries) ListSeries(ctx context.Context, userID uuid.UUID) ([]TaskSerie
 			&i.DurationMinutes,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.HabitID,
 		); err != nil {
 			return nil, err
 		}

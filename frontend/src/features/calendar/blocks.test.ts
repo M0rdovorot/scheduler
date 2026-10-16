@@ -17,6 +17,7 @@ const task = (over: Partial<Instance>): Instance => ({
   comment: '',
   category_ids: [],
   series_id: null,
+  habit_id: null,
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],

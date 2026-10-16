@@ -179,7 +179,7 @@ func (q *Queries) DeleteInstance(ctx context.Context, arg DeleteInstanceParams) 
 }
 
 const getInstance = `-- name: GetInstance :one
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details WHERE id = $1 AND user_id = $2
 `
 
 type GetInstanceParams struct {
@@ -209,6 +209,7 @@ func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (Insta
 		&i.ToID,
 		&i.ToPlannedStart,
 		&i.ToPlannedEnd,
+		&i.HabitID,
 	)
 	return i, err
 }
@@ -234,7 +235,7 @@ func (q *Queries) HasLiveReplacement(ctx context.Context, arg HasLiveReplacement
 }
 
 const listInstances = `-- name: ListInstances :many
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details
 WHERE user_id = $1
   AND status <> 'cancelled'
   AND ((planned_start < $2 AND planned_end > $3)
@@ -284,6 +285,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 			&i.ToID,
 			&i.ToPlannedStart,
 			&i.ToPlannedEnd,
+			&i.HabitID,
 		); err != nil {
 			return nil, err
 		}
@@ -296,7 +298,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 }
 
 const listRunningInstances = `-- name: ListRunningInstances :many
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details
 WHERE user_id = $1 AND status = 'in_progress'
 ORDER BY actual_start, id
 `
@@ -330,6 +332,7 @@ func (q *Queries) ListRunningInstances(ctx context.Context, userID uuid.UUID) ([
 			&i.ToID,
 			&i.ToPlannedStart,
 			&i.ToPlannedEnd,
+			&i.HabitID,
 		); err != nil {
 			return nil, err
 		}

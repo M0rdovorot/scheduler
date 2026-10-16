@@ -460,9 +460,12 @@
 | `POST /instances/{id}/reschedule` | перенос: исходное дело получает статус «перенесено», создаётся новое разовое дело; ответ — новое |
 | `PATCH /instances/{id}/tracking` | статус, факт, комментарий; статус `planned` снимает отметку |
 | `POST /instances/unplanned` | дело вне плана: задним числом или с таймером |
-| `GET /habits`, `POST /habits`, `PATCH /habits/{id}`, `DELETE /habits/{id}` | привычки |
+| `GET /habits`, `POST /habits`, `GET/PATCH/DELETE /habits/{id}` | привычки |
+| `POST /habits/{id}/archive`, `POST /habits/{id}/unarchive` | архив: привычка уходит из сетки, отметки остаются |
+| `PUT /habits/{id}/placement`, `DELETE /habits/{id}/placement` | поставить в сетку дня (время и длительность) или убрать |
 | `GET /habits/today` | привычки на сегодня |
-| `GET /habits/{id}/logs?from&to`, `PUT /habits/{id}/logs/{date}` | отметки привычки |
+| `PUT /habits/{id}/logs/{date}` | значение привычки на локальную дату (0 снимает отметку) |
+| `GET /habits/{id}/stats?from&to` | серии, процент за всё время / 30 / 90 дней, тепловая карта за `from..to` |
 | `GET /reminders/global`, `PUT /reminders/global` | общий выключатель, тихие часы, общие правила |
 | `GET /reminders/{scope}/{targetId}` | настройки напоминаний уровня |
 | `PUT /reminders/{scope}/{targetId}` | задать свои правила уровня |

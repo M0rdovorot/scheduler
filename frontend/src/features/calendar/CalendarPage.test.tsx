@@ -41,6 +41,7 @@ const task = (
   comment: '',
   category_ids: categoryIds,
   series_id: seriesId,
+  habit_id: null,
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],

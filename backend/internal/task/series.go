@@ -358,6 +358,9 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	}
 	var patchedRule *recurrence.Rule
 	if in.Recurrence != nil {
+		if row.HabitID.Valid {
+			return &validation.Error{Field: "recurrence", Message: "the schedule of a habit is changed in the habit"}
+		}
 		r, err := parseRecurrence(*in.Recurrence)
 		if err != nil {
 			return err
@@ -445,7 +448,7 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	}
 	created, err := q.CreateSeries(ctx, store.CreateSeriesParams{
 		UserID: userID, Title: title, Description: description, Rrule: newRule.String(),
-		DtstartLocal: start, Timezone: row.Timezone, DurationMinutes: duration,
+		DtstartLocal: start, Timezone: row.Timezone, DurationMinutes: duration, HabitID: row.HabitID,
 	})
 	if err != nil {
 		return fmt.Errorf("create series: %w", err)

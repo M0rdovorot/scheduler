@@ -93,6 +93,17 @@ func set(ctx context.Context, q *store.Queries, userID uuid.UUID, cur store.Task
 	if err != nil {
 		return fmt.Errorf("set tracking: %w", err)
 	}
+	// A done occurrence of a habit credits its day; one that is no longer done takes it back.
+	if cur.SeriesID.Valid {
+		if status == StatusDone {
+			err = q.CreditHabitDay(ctx, store.CreditHabitDayParams{InstanceID: cur.ID, UserID: userID})
+		} else {
+			err = q.RevokeHabitCredit(ctx, store.RevokeHabitCreditParams{InstanceID: uuid.NullUUID{UUID: cur.ID, Valid: true}, UserID: userID})
+		}
+		if err != nil {
+			return fmt.Errorf("update habit credit: %w", err)
+		}
+	}
 	return nil
 }
 

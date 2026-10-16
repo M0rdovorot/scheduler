@@ -83,6 +83,8 @@ type Instance struct {
 	CategoryIDs []uuid.UUID
 	// SeriesID is set for occurrences of a regular task.
 	SeriesID *uuid.UUID
+	// HabitID is set for occurrences of a habit that is placed in the grid.
+	HabitID *uuid.UUID
 	// RescheduledFrom is the task this one replaced; RescheduledTo the one that replaced this.
 	RescheduledFrom *Link
 	RescheduledTo   *Link
@@ -347,6 +349,9 @@ func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID, scope Scope)
 			if err := q.CancelInstance(ctx, store.CancelInstanceParams{ID: id, UserID: userID}); err != nil {
 				return fmt.Errorf("cancel instance: %w", err)
 			}
+			if err := q.RevokeHabitCredit(ctx, store.RevokeHabitCreditParams{InstanceID: uuid.NullUUID{UUID: id, Valid: true}, UserID: userID}); err != nil {
+				return fmt.Errorf("revoke habit credit: %w", err)
+			}
 			return nil
 		}
 		return deleteSeries(ctx, q, userID, cur, scope)
@@ -385,6 +390,7 @@ func fromRow(r store.InstanceDetail, threshold int) Instance {
 		ActualStart: r.ActualStart, ActualEnd: r.ActualEnd,
 		Status: r.Status, Comment: r.Comment, CategoryIDs: r.CategoryIds,
 		SeriesID:        nullUUIDPtr(r.SeriesID),
+		HabitID:         nullUUIDPtr(r.HabitID),
 		RescheduledFrom: link(r.FromID, r.FromPlannedStart, r.FromPlannedEnd),
 		RescheduledTo:   link(r.ToID, r.ToPlannedStart, r.ToPlannedEnd),
 	}

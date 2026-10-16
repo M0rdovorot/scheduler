@@ -15,6 +15,7 @@ tags:
   - name: tasks
   - name: tracking
   - name: stats
+  - name: habits
 paths:
   /healthz:
     get:
@@ -604,6 +605,271 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /habits:
+    get:
+      operationId: listHabits
+      summary: All habits of the user, archived ones included
+      tags: [habits]
+      responses:
+        "200":
+          description: Habits, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Habit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createHabit
+      summary: Create a habit
+      description: |
+        With `placement` the habit is also put in the grid: a regular task that starts today.
+        Only for `daily` and `weekdays`.
+      tags: [habits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HabitInput"
+      responses:
+        "201":
+          description: Created habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /habits/today:
+    get:
+      operationId: getHabitsToday
+      summary: Habits for today, with today's marks
+      description: |
+        Habits planned for today's weekday, and those with a weekly goal (they can be worked on
+        any day). Archived habits are left out. "Today" is the local date of the user.
+      tags: [habits]
+      responses:
+        "200":
+          description: Today's list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabitsToday"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /habits/{id}:
+    parameters:
+      - $ref: "#/components/parameters/HabitId"
+    get:
+      operationId: getHabit
+      summary: One habit
+      tags: [habits]
+      responses:
+        "200":
+          description: Habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateHabit
+      summary: Change a habit
+      description: |
+        The kind cannot be changed. When `frequency` is given, the schedule is replaced as a
+        whole by `frequency`, `weekdays` and `times_per_week`. A new title or schedule reaches the
+        habit's series in the grid.
+      tags: [habits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HabitPatch"
+      responses:
+        "200":
+          description: Updated habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteHabit
+      summary: Delete a habit with its marks
+      description: |
+        It leaves the grid. Occurrences that were marked stay in the calendar as ordinary tasks.
+      tags: [habits]
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /habits/{id}/archive:
+    post:
+      operationId: archiveHabit
+      summary: Archive a habit
+      description: Its marks stay. It leaves the grid; marked occurrences stay in the calendar.
+      tags: [habits]
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+      responses:
+        "200":
+          description: Archived habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /habits/{id}/unarchive:
+    post:
+      operationId: unarchiveHabit
+      summary: Bring an archived habit back
+      description: It does not go back to the grid by itself.
+      tags: [habits]
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+      responses:
+        "200":
+          description: Habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /habits/{id}/placement:
+    parameters:
+      - $ref: "#/components/parameters/HabitId"
+    put:
+      operationId: setHabitPlacement
+      summary: Put a habit in the grid, or change its time and length there
+      description: |
+        Only for `daily` and `weekdays`. The habit becomes a regular task that starts today;
+        marked occurrences keep their time.
+      tags: [habits]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HabitPlacement"
+      responses:
+        "200":
+          description: Habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: clearHabitPlacement
+      summary: Take a habit out of the grid
+      description: Planned occurrences go; marked ones stay as history.
+      tags: [habits]
+      responses:
+        "200":
+          description: Habit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Habit"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /habits/{id}/logs/{date}:
+    put:
+      operationId: setHabitLog
+      summary: Set the value of a habit on a local date
+      description: |
+        1 or 0 for a yes/no habit; the accumulated value for a quantity. Zero removes the mark.
+        The value replaces the one that is there, including what a done occurrence in the grid
+        credited. A day that has not come yet is refused.
+      tags: [habits]
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HabitLog"
+      responses:
+        "204":
+          description: Saved
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /habits/{id}/stats:
+    get:
+      operationId: getHabitStats
+      summary: Streaks, percentages and the heat map of a habit
+      description: |
+        Rules are in `docs/requirements.md` (assumption 8). `days` covers `from`..`to`, both
+        included, at most 366 days. Percentages and streaks do not depend on the range.
+      tags: [habits]
+      parameters:
+        - $ref: "#/components/parameters/HabitId"
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HabitStats"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     SeriesId:
@@ -633,6 +899,13 @@ components:
         type: string
         format: uuid
     CategoryId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    HabitId:
       name: id
       in: path
       required: true
@@ -865,6 +1138,7 @@ components:
         - comment
         - category_ids
         - series_id
+        - habit_id
         - rescheduled_from
         - rescheduled_to
         - deviations
@@ -877,6 +1151,11 @@ components:
           format: uuid
           nullable: true
           description: Set for occurrences of a regular task; see `GET /series/{id}`
+        habit_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Set for occurrences of a habit that is placed in the grid
         title:
           type: string
         description:
@@ -1226,3 +1505,219 @@ components:
             ordered by planned start (FR-8.4)
           items:
             $ref: "#/components/schemas/Instance"
+    HabitPlacement:
+      type: object
+      required: [time, duration_minutes]
+      properties:
+        time:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: Local time of day
+          example: "07:30"
+        duration_minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+    Habit:
+      type: object
+      required:
+        - id
+        - title
+        - kind
+        - target_value
+        - unit
+        - frequency
+        - weekdays
+        - times_per_week
+        - color
+        - archived_at
+        - created_at
+        - placement
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [boolean, quantity]
+        target_value:
+          type: integer
+          description: The value that makes a day done; 1 for a yes/no habit
+        unit:
+          type: string
+          description: Unit of a quantity ("стаканов", "мин"); empty for yes/no
+        frequency:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        weekdays:
+          type: array
+          description: ISO weekdays (1 = Monday … 7 = Sunday); empty unless `frequency` is `weekdays`
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+        times_per_week:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 7
+        color:
+          type: string
+          pattern: "^#[0-9a-f]{6}$"
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        placement:
+          nullable: true
+          description: Where the habit sits in the day grid; null when it is not in the grid
+          allOf:
+            - $ref: "#/components/schemas/HabitPlacement"
+    HabitInput:
+      type: object
+      required: [title, kind, frequency, color]
+      properties:
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [boolean, quantity]
+        target_value:
+          type: integer
+          description: Required for a quantity; ignored for yes/no
+        unit:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        weekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+        times_per_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+        color:
+          type: string
+          pattern: "^#[0-9a-f]{6}$"
+        placement:
+          $ref: "#/components/schemas/HabitPlacement"
+    HabitPatch:
+      type: object
+      properties:
+        title:
+          type: string
+        target_value:
+          type: integer
+        unit:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekdays, times_per_week]
+        weekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+        times_per_week:
+          type: integer
+          minimum: 1
+          maximum: 7
+        color:
+          type: string
+          pattern: "^#[0-9a-f]{6}$"
+    HabitLog:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: integer
+          minimum: 0
+    HabitStreaks:
+      type: object
+      required: [current, best, unit]
+      properties:
+        current:
+          type: integer
+        best:
+          type: integer
+        unit:
+          type: string
+          enum: [day, week]
+          description: Planned days in a row, or weeks in a row for a weekly goal
+    HabitTodayItem:
+      type: object
+      required: [habit, value, done, week_done, streaks]
+      properties:
+        habit:
+          $ref: "#/components/schemas/Habit"
+        value:
+          type: integer
+          description: Today's value; 0 without a mark
+        done:
+          type: boolean
+        week_done:
+          type: integer
+          description: Done days of the current week (Monday to Sunday)
+        streaks:
+          $ref: "#/components/schemas/HabitStreaks"
+    HabitsToday:
+      type: object
+      required: [date, items]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Today's local date
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HabitTodayItem"
+    HabitDay:
+      type: object
+      required: [date, value, done, planned]
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: integer
+        done:
+          type: boolean
+        planned:
+          type: boolean
+          description: False on a day that is not in the schedule, and on every day of a weekly goal
+    HabitStats:
+      type: object
+      required: [habit, today, streaks, percent_all, percent_30, percent_90, days]
+      properties:
+        habit:
+          $ref: "#/components/schemas/Habit"
+        today:
+          type: string
+          format: date
+        streaks:
+          $ref: "#/components/schemas/HabitStreaks"
+        percent_all:
+          type: integer
+          nullable: true
+          description: Share of done days (or weeks) over the whole history; null while nothing is over
+        percent_30:
+          type: integer
+          nullable: true
+        percent_90:
+          type: integer
+          nullable: true
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/HabitDay"

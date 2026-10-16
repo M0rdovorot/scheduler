@@ -140,7 +140,7 @@ func toInstance(in task.Instance) Instance {
 		Id: in.ID, Title: in.Title, Description: in.Description,
 		PlannedStart: in.PlannedStart, PlannedEnd: in.PlannedEnd,
 		ActualStart: in.ActualStart, ActualEnd: in.ActualEnd,
-		Status: InstanceStatus(in.Status), Comment: in.Comment, CategoryIds: ids, SeriesId: in.SeriesID,
+		Status: InstanceStatus(in.Status), Comment: in.Comment, CategoryIds: ids, SeriesId: in.SeriesID, HabitId: in.HabitID,
 		RescheduledFrom: toLink(in.RescheduledFrom), RescheduledTo: toLink(in.RescheduledTo),
 		Deviations: deviations,
 	}

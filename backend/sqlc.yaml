@@ -31,3 +31,9 @@ sql:
               type: "*int32"
           - db_type: pg_catalog.timestamp
             go_type: time.Time
+          - db_type: date
+            go_type: time.Time
+          - db_type: pg_catalog.int2
+            nullable: true
+            go_type:
+              type: "*int16"

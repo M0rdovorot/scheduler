@@ -14,6 +14,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
+	"github.com/m0rdovorot/scheduler/backend/internal/habit"
 	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/user"
@@ -39,6 +40,7 @@ type Deps struct {
 	Categories *category.Service
 	Tasks      *task.Service
 	Stats      *stats.Service
+	Habits     *habit.Service
 }
 
 // Server implements StrictServerInterface.

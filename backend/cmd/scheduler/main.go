@@ -16,6 +16,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
+	"github.com/m0rdovorot/scheduler/backend/internal/habit"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
 	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
@@ -71,6 +72,7 @@ func run() error {
 		Categories: categories,
 		Tasks:      tasks,
 		Stats:      stats.NewService(tasks, categories, users),
+		Habits:     habit.NewService(st),
 	})
 
 	srv := &http.Server{

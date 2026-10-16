@@ -20,6 +20,29 @@ type Category struct {
 	CreatedAt  time.Time
 }
 
+type Habit struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	Title        string
+	Kind         string
+	TargetValue  int32
+	Unit         string
+	Frequency    string
+	Weekdays     []int16
+	TimesPerWeek *int16
+	Color        string
+	ArchivedAt   *time.Time
+	CreatedAt    time.Time
+}
+
+type HabitLog struct {
+	HabitID        uuid.UUID
+	UserID         uuid.UUID
+	Date           time.Time
+	Value          int32
+	TaskInstanceID uuid.NullUUID
+}
+
 type InstanceCategory struct {
 	InstanceID uuid.UUID
 	CategoryID uuid.UUID
@@ -45,6 +68,7 @@ type InstanceDetail struct {
 	ToID             uuid.NullUUID
 	ToPlannedStart   *time.Time
 	ToPlannedEnd     *time.Time
+	HabitID          uuid.NullUUID
 }
 
 type SeriesCategory struct {
@@ -92,6 +116,7 @@ type TaskSeries struct {
 	DurationMinutes int32
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	HabitID         uuid.NullUUID
 }
 
 type User struct {
