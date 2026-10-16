@@ -16,7 +16,7 @@
 
 - **Backend:** Go 1.27, `net/http` + `chi`, `pgx/v5` + `sqlc`, `goose`, `log/slog`, `oapi-codegen` (strict server), `rrule-go`, `go-telegram/bot`
 - **БД:** PostgreSQL 18
-- **Frontend:** React + TypeScript (strict) + Vite, TanStack Query, React Router, Zustand, Tailwind CSS, `date-fns` + `@date-fns/tz`, Recharts
+- **Frontend:** React + TypeScript (strict) + Vite, TanStack Query, React Router, Zustand, Tailwind CSS, `date-fns` + `@date-fns/tz`; график статистики — свой SVG-компонент
 - **Telegram:** Mini App (официальный `telegram-web-app.js`) и бот (long polling)
 - **Инфраструктура:** `docker compose`
 

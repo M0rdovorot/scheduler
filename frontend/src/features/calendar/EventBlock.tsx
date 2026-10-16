@@ -78,10 +78,18 @@ export function EventBlock({
         className={`block font-medium ${dense ? 'break-words hyphens-auto' : 'truncate'} ${rescheduled ? 'line-through' : ''}`}
         lang="ru"
       >
-        {mark && (
-          <span aria-hidden="true" className="mr-0.5" data-mark>
-            {mark}
-          </span>
+        {instance.status === 'in_progress' ? (
+          <span
+            aria-hidden="true"
+            data-running
+            className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-danger align-middle"
+          />
+        ) : (
+          mark && (
+            <span aria-hidden="true" className="mr-0.5" data-mark>
+              {mark}
+            </span>
+          )
         )}
         {instance.series_id && (
           <span aria-hidden="true" className="mr-0.5 text-hint" data-repeat>

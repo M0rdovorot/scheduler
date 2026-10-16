@@ -4,7 +4,9 @@ import {
   actionsFor,
   deviationText,
   factInterval,
+  formatElapsed,
   formatMinutes,
+  isTooLong,
   isUnmarked,
   isUnplanned,
   planInterval,
@@ -173,5 +175,25 @@ describe('deviationText / formatMinutes', () => {
     expect(formatMinutes(0)).toBe('0 мин')
     expect(formatMinutes(59)).toBe('59 мин')
     expect(formatMinutes(120)).toBe('2 ч')
+  })
+})
+
+describe('formatElapsed / isTooLong', () => {
+  it.each([
+    [0, '0:00:00'],
+    [999, '0:00:00'],
+    [1000, '0:00:01'],
+    [65_000, '0:01:05'],
+    [3_661_000, '1:01:01'],
+    [36_000_000, '10:00:00'],
+    [-5000, '0:00:00'],
+  ])('%i ms → %s', (ms, want) => {
+    expect(formatElapsed(ms)).toBe(want)
+  })
+
+  it('flags a timer that runs longer than the statistics count', () => {
+    const start = new Date('2026-10-14T00:00:00Z')
+    expect(isTooLong(start, new Date('2026-10-14T12:00:00Z'))).toBe(false) // exactly the cap
+    expect(isTooLong(start, new Date('2026-10-14T12:00:01Z'))).toBe(true)
   })
 })

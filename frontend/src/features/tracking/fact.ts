@@ -102,3 +102,21 @@ export function formatMinutes(total: number): string {
   if (h === 0) return `${m} мин`
   return m === 0 ? `${h} ч` : `${h} ч ${m} мин`
 }
+
+/** The longest a timer counts in the statistics; keep in step with the server. */
+export const maxTimerHours = 12
+
+/** "1:05:09" (hours, minutes, seconds) for the running time of a timer. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${h}:${pad(m)}:${pad(s)}`
+}
+
+/** True when a running timer has passed the cap that the statistics apply. */
+export function isTooLong(startedAt: Date, now: Date): boolean {
+  return now.getTime() - startedAt.getTime() > maxTimerHours * 3600_000
+}

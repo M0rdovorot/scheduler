@@ -148,3 +148,27 @@ export function useCreateUnplanned() {
     }) => unwrap(await api.POST('/instances/unplanned', { body })),
   )
 }
+
+/** Tasks whose timer is running, from whatever day they were started. */
+export function useRunningInstances() {
+  return useQuery({
+    // Under the "instances" prefix, so that every tracking action refreshes it too.
+    queryKey: [...instancesKey, 'running'],
+    queryFn: async () => unwrap(await api.GET('/instances/running')),
+    refetchInterval: 60_000,
+  })
+}
+
+/** Statistics of [from, to). Kept under "instances": any change of a task refreshes it. */
+export function useStats(from: Date, to: Date, enabled = true) {
+  const fromIso = from.toISOString()
+  const toIso = to.toISOString()
+  return useQuery({
+    queryKey: [...instancesKey, 'stats', fromIso, toIso],
+    enabled,
+    queryFn: async () =>
+      unwrap(await api.GET('/stats', { params: { query: { from: fromIso, to: toIso } } })),
+    // Keep the previous report on screen (dimmed) while the next one loads.
+    placeholderData: (previous) => previous,
+  })
+}

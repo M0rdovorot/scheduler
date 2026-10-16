@@ -275,6 +275,48 @@ export interface paths {
         patch: operations["updateInstance"];
         trace?: never;
     };
+    "/instances/running": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tasks whose timer is running, from whatever day they were started */
+        get: operations["listRunningInstances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Statistics of a period, by the fact
+         * @description Hours by category and by task, the busy time, plan against fact, the breakdown by
+         *     day and the deviations (FR-8). The period is at most 366 days; days are local days
+         *     of the user's time zone.
+         *
+         *     A running timer counts up to now, but at most 12 hours: a timer that runs longer
+         *     counts only its first 12 hours and is reported in `long_running_timers`.
+         */
+        get: operations["getStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/instances/unplanned": {
         parameters: {
             query?: never;
@@ -671,6 +713,84 @@ export interface components {
             timezone: string;
             duration_minutes: number;
             category_ids: string[];
+        };
+        CategoryMinutes: {
+            /** Format: uuid */
+            category_id: string;
+            minutes: number;
+        };
+        TaskMinutes: {
+            title: string;
+            count: number;
+            minutes: number;
+        };
+        StatsDay: {
+            /**
+             * @description Local date
+             * @example 2026-10-14
+             */
+            date: string;
+            /** @description Busy time of the day; parallel tasks are not counted twice */
+            minutes: number;
+            /**
+             * @description The tasks of the day split by the color category of each task (its first category
+             *     by name); `category_id` is null for tasks without a category. Parallel tasks add up.
+             */
+            by_category: components["schemas"]["DayCategoryMinutes"][];
+        };
+        DayCategoryMinutes: {
+            /** Format: uuid */
+            category_id: string | null;
+            minutes: number;
+        };
+        PlanVsFact: {
+            /** @description Planned tasks of the period by planned start, without rescheduled originals */
+            planned_count: number;
+            done: number;
+            partial: number;
+            not_done: number;
+            in_progress: number;
+            /** @description Planned tasks whose time is over and nobody marked them; not in the fact */
+            unmarked: number;
+            upcoming: number;
+            /** @description Rescheduled originals; their replacements are counted as planned */
+            rescheduled: number;
+            /** @description Tasks with the deviation `started_late` */
+            late_starts: number;
+            /** @description Tasks with the deviation `finished_late` */
+            overran: number;
+            /** @description done / (done + partial + not done + unmarked), rounded; null until a task is decided */
+            percent_done: number | null;
+        };
+        StatsReport: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** @description Busy time by the fact, a union of intervals (FR-8.3) */
+            actual_minutes: number;
+            /** @description Busy time by the plan, a union of intervals; rescheduled originals are not in it */
+            planned_minutes: number;
+            /** @description The part of the fact that belongs to tasks outside the plan (FR-8.6) */
+            unplanned_minutes: number;
+            unplanned_count: number;
+            /** @description Timers that run for longer than 12 hours and are counted only for the first 12 */
+            long_running_timers: number;
+            uncategorized_minutes: number;
+            /**
+             * @description Hours of each category including all its subcategories. A task counts once in each
+             *     category of its categories and their ancestors (FR-8.2). Only categories with time.
+             */
+            categories: components["schemas"]["CategoryMinutes"][];
+            /** @description Tasks grouped by title, the longest first */
+            tasks: components["schemas"]["TaskMinutes"][];
+            days: components["schemas"]["StatsDay"][];
+            plan_vs_fact: components["schemas"]["PlanVsFact"];
+            /**
+             * @description Tasks with a deviation, and not done, partial or rescheduled tasks with a comment,
+             *     ordered by planned start (FR-8.4)
+             */
+            deviations: components["schemas"]["Instance"][];
         };
     };
     responses: {
@@ -1138,6 +1258,52 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listRunningInstances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Running tasks, the longest running first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Instance"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getStats: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
         };
     };
     createUnplanned: {

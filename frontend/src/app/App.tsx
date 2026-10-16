@@ -2,6 +2,8 @@ import { Route, Routes } from 'react-router'
 import { CategoriesPage } from '@/features/categories/CategoriesPage'
 import { CalendarPage } from '@/features/calendar/CalendarPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { StatsPage } from '@/features/stats/StatsPage'
+import { TimersPage } from '@/features/tracking/TimersPage'
 import { AuthGate } from './AuthGate'
 import { Layout } from './Layout'
 
@@ -12,6 +14,8 @@ export function App() {
         <Route element={<Layout />}>
           <Route index element={<CalendarPage />} />
           <Route path="categories" element={<CategoriesPage />} />
+          <Route path="stats" element={<StatsPage />} />
+          <Route path="timers" element={<TimersPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

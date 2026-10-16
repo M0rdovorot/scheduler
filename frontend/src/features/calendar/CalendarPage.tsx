@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useCategories } from '@/api/categories'
-import { useInstances } from '@/api/instances'
+import { useInstances, useRunningInstances } from '@/api/instances'
 import { useMe } from '@/api/me'
+import { useNow } from '@/lib/useNow'
 import type { Category } from '@/api/types'
 import { UnplannedDialog } from '@/features/tracking/UnplannedDialog'
 import { effectiveMode } from './blocks'
@@ -12,16 +13,6 @@ import { TaskForm, type TaskFormTarget } from './TaskForm'
 import { TimeGrid } from './TimeGrid'
 import { draftForSelection, draftStartingNow } from './taskDraft'
 import type { SlotSelection } from './useSlotSelection'
-
-/** The current time, refreshed every 30 seconds for the "now" line. */
-function useNow(): Date {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(id)
-  }, [])
-  return now
-}
 
 export function CalendarPage() {
   const { data: me } = useMe()
@@ -55,6 +46,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
   const { from, to } = useMemo(() => dayRange(days, tz), [days, tz])
   const instances = useInstances(from, to)
   const categories = useCategories()
+  const running = useRunningInstances()
   const [target, setTarget] = useState<TaskFormTarget | null>(null)
   const [unplannedOpen, setUnplannedOpen] = useState(false)
 
@@ -83,6 +75,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         mode={mode}
         onModeChange={setMode}
         onUnplanned={() => setUnplannedOpen(true)}
+        runningCount={running.data?.length ?? 0}
         onPrev={() => setAnchor(shiftAnchor(view, anchor, -1))}
         onNext={() => setAnchor(shiftAnchor(view, anchor, 1))}
         onToday={() => setAnchor(null)}

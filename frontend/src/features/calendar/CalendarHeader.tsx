@@ -22,6 +22,8 @@ interface CalendarHeaderProps {
   mode: ShowMode
   onModeChange: (mode: ShowMode) => void
   onUnplanned: () => void
+  /** Timers that are running now, from any day; shown as a mark that leads to their list. */
+  runningCount: number
   onPrev: () => void
   onNext: () => void
   onToday: () => void
@@ -36,6 +38,7 @@ export function CalendarHeader({
   mode,
   onModeChange,
   onUnplanned,
+  runningCount,
   onPrev,
   onNext,
   onToday,
@@ -83,6 +86,17 @@ export function CalendarHeader({
             className="absolute inset-0 size-full cursor-pointer opacity-0"
           />
         </div>
+        {runningCount > 0 && (
+          <Link
+            to="/timers"
+            aria-label={`Запущенные таймеры: ${runningCount}`}
+            data-running-badge
+            className="flex items-center gap-1 rounded-xl bg-surface px-2 py-2 text-sm"
+          >
+            <span aria-hidden="true" className="size-2 animate-pulse rounded-full bg-danger" />
+            {runningCount}
+          </Link>
+        )}
         <button type="button" className="rounded-xl bg-surface px-3 py-2 text-sm" onClick={onToday}>
           Сегодня
         </button>
@@ -108,6 +122,12 @@ export function CalendarHeader({
               >
                 Дело вне плана
               </button>
+              <Link to="/stats" className="block rounded-lg px-3 py-2 hover:bg-surface">
+                Статистика
+              </Link>
+              <Link to="/timers" className="block rounded-lg px-3 py-2 hover:bg-surface">
+                Таймеры{runningCount > 0 ? ` (${runningCount})` : ''}
+              </Link>
               <Link to="/categories" className="block rounded-lg px-3 py-2 hover:bg-surface">
                 Категории
               </Link>
