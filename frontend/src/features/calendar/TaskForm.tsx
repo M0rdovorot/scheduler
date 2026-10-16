@@ -216,6 +216,7 @@ function TaskFormBody({
     { scope: 'all', label: 'Все дела серии' },
   ]
 
+  const readOnly = editing?.status === 'rescheduled'
   const showRepeat = !compact && (!editing || inSeries)
 
   // A task with a status other than planned carries a fact; deleting it drops the fact too.
@@ -229,6 +230,9 @@ function TaskFormBody({
       <Dialog title={editing ? 'Дело' : 'Новое дело'} onClose={onClose}>
         {editing && (
           <TrackingPanel
+            key={[editing.status, editing.actual_start, editing.actual_end, editing.comment].join(
+              '|',
+            )}
             instance={editing}
             tz={tz}
             now={now}
@@ -240,124 +244,133 @@ function TaskFormBody({
             }}
           />
         )}
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div>
-            <label className="block">
-              <span>Название</span>
-              <input
-                className={fieldClass}
-                value={draft.title}
-                autoFocus
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              />
-            </label>
-            {errors.title && (
-              <span className={`block text-sm ${draft.title === '' ? 'text-hint' : 'text-danger'}`}>
-                {errors.title}
-              </span>
-            )}
-          </div>
-
-          {compact ? (
-            <div className="flex items-center justify-between gap-2">
-              <span aria-label="Время">{start && end ? formatTimeRange(start, end, tz) : '—'}</span>
-              <button type="button" className="text-link" onClick={() => setCompact(false)}>
-                Подробнее
-              </button>
-            </div>
-          ) : (
-            <>
+        {/* A rescheduled task is history: only the card above and the delete button remain. */}
+        {!readOnly && (
+          <form onSubmit={onSubmit} className="space-y-4">
+            <div>
               <label className="block">
-                <span>Описание</span>
-                <textarea
+                <span>Название</span>
+                <input
                   className={fieldClass}
-                  rows={3}
-                  value={draft.description}
-                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  value={draft.title}
+                  autoFocus
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
                 />
-                {errors.description && (
-                  <span className="block text-sm text-danger">{errors.description}</span>
-                )}
               </label>
-
-              {!unplanned && (
-                <>
-                  <label className="block">
-                    <span>Начало</span>
-                    <input
-                      type="datetime-local"
-                      className={fieldClass}
-                      value={draft.start}
-                      onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-                    />
-                    {errors.start && (
-                      <span className="block text-sm text-danger">{errors.start}</span>
-                    )}
-                  </label>
-
-                  <label className="block">
-                    <span>Конец</span>
-                    <input
-                      type="datetime-local"
-                      className={fieldClass}
-                      value={draft.end}
-                      onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-                    />
-                    {errors.end && <span className="block text-sm text-danger">{errors.end}</span>}
-                  </label>
-                </>
+              {errors.title && (
+                <span
+                  className={`block text-sm ${draft.title === '' ? 'text-hint' : 'text-danger'}`}
+                >
+                  {errors.title}
+                </span>
               )}
+            </div>
 
-              {showRepeat && !ruleUnsupported && (
-                <RepeatEditor
-                  value={draft.repeat}
-                  startDay={dayOf(draft.start)}
-                  onChange={(repeat) => setDraft({ ...draft, repeat })}
-                />
-              )}
-              {inSeries && ruleUnsupported && series && (
-                <p className="text-sm text-hint">Правило повтора: {series.rrule}</p>
-              )}
-              {inSeries && !ruleUnsupported && savedRepeat && !showRepeat && (
-                <p className="text-sm text-hint">
-                  {describeRepeat(savedRepeat, dayOf(draft.start))}
-                </p>
-              )}
-
-              <fieldset>
-                <legend>Категории</legend>
-                <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-separator bg-surface px-3 py-1">
-                  <CategoryPicker
-                    categories={categories}
-                    value={draft.categoryIds}
-                    onChange={(categoryIds) => setDraft({ ...draft, categoryIds })}
+            {compact ? (
+              <div className="flex items-center justify-between gap-2">
+                <span aria-label="Время">
+                  {start && end ? formatTimeRange(start, end, tz) : '—'}
+                </span>
+                <button type="button" className="text-link" onClick={() => setCompact(false)}>
+                  Подробнее
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="block">
+                  <span>Описание</span>
+                  <textarea
+                    className={fieldClass}
+                    rows={3}
+                    value={draft.description}
+                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
                   />
-                </div>
-              </fieldset>
-            </>
-          )}
+                  {errors.description && (
+                    <span className="block text-sm text-danger">{errors.description}</span>
+                  )}
+                </label>
 
-          {conflict && (
-            <p role="alert" className="text-sm text-danger">
-              Нельзя менять дату и правило повтора одновременно: сохраните сначала одно, потом
-              другое
-            </p>
-          )}
+                {!unplanned && (
+                  <>
+                    <label className="block">
+                      <span>Начало</span>
+                      <input
+                        type="datetime-local"
+                        className={fieldClass}
+                        value={draft.start}
+                        onChange={(e) => setDraft({ ...draft, start: e.target.value })}
+                      />
+                      {errors.start && (
+                        <span className="block text-sm text-danger">{errors.start}</span>
+                      )}
+                    </label>
 
-          {error && dialog === null && (
-            <p role="alert" className="text-danger">
-              {error}
-            </p>
-          )}
+                    <label className="block">
+                      <span>Конец</span>
+                      <input
+                        type="datetime-local"
+                        className={fieldClass}
+                        value={draft.end}
+                        onChange={(e) => setDraft({ ...draft, end: e.target.value })}
+                      />
+                      {errors.end && (
+                        <span className="block text-sm text-danger">{errors.end}</span>
+                      )}
+                    </label>
+                  </>
+                )}
 
-          <button
-            type="submit"
-            disabled={!canSave}
-            className="w-full rounded-xl bg-accent px-4 py-3 text-accent-fg disabled:opacity-50"
-          >
-            {editing ? 'Сохранить' : 'Создать'}
-          </button>
-        </form>
+                {showRepeat && !ruleUnsupported && (
+                  <RepeatEditor
+                    value={draft.repeat}
+                    startDay={dayOf(draft.start)}
+                    onChange={(repeat) => setDraft({ ...draft, repeat })}
+                  />
+                )}
+                {inSeries && ruleUnsupported && series && (
+                  <p className="text-sm text-hint">Правило повтора: {series.rrule}</p>
+                )}
+                {inSeries && !ruleUnsupported && savedRepeat && !showRepeat && (
+                  <p className="text-sm text-hint">
+                    {describeRepeat(savedRepeat, dayOf(draft.start))}
+                  </p>
+                )}
+
+                <fieldset>
+                  <legend>Категории</legend>
+                  <div className="mt-1 max-h-48 overflow-y-auto rounded-xl border border-separator bg-surface px-3 py-1">
+                    <CategoryPicker
+                      categories={categories}
+                      value={draft.categoryIds}
+                      onChange={(categoryIds) => setDraft({ ...draft, categoryIds })}
+                    />
+                  </div>
+                </fieldset>
+              </>
+            )}
+
+            {conflict && (
+              <p role="alert" className="text-sm text-danger">
+                Нельзя менять дату и правило повтора одновременно: сохраните сначала одно, потом
+                другое
+              </p>
+            )}
+
+            {error && dialog === null && (
+              <p role="alert" className="text-danger">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={!canSave}
+              className="w-full rounded-xl bg-accent px-4 py-3 text-accent-fg disabled:opacity-50"
+            >
+              {editing ? 'Сохранить' : 'Создать'}
+            </button>
+          </form>
+        )}
 
         {editing && (
           <div className="mt-4 border-t border-separator pt-4">

@@ -213,6 +213,26 @@ func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (Insta
 	return i, err
 }
 
+const hasLiveReplacement = `-- name: HasLiveReplacement :one
+SELECT EXISTS (
+    SELECT 1 FROM task_instances r
+    WHERE r.rescheduled_from_id = $1 AND r.user_id = $2 AND r.status <> 'cancelled'
+) AS has_replacement
+`
+
+type HasLiveReplacementParams struct {
+	ID     uuid.NullUUID
+	UserID uuid.UUID
+}
+
+// Whether a rescheduled task still has the task it was moved to.
+func (q *Queries) HasLiveReplacement(ctx context.Context, arg HasLiveReplacementParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasLiveReplacement, arg.ID, arg.UserID)
+	var has_replacement bool
+	err := row.Scan(&has_replacement)
+	return has_replacement, err
+}
+
 const listInstances = `-- name: ListInstances :many
 SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end FROM instance_details
 WHERE user_id = $1

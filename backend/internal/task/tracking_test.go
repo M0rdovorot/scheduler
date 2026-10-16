@@ -136,20 +136,20 @@ func TestTimersStartAndStopAndSeveralRunAtOnce(t *testing.T) {
 	wantState(t, err, task.CodeInvalidState)
 }
 
-func TestStopNeverEndsBeforeTheStart(t *testing.T) {
+func TestStopNeverGivesAZeroLengthFact(t *testing.T) {
 	e := newTrackEnv(t)
 	ctx := context.Background()
 	in := e.planned("Спорт")
 	if _, err := e.svc.Start(ctx, e.user, in.ID); err != nil {
 		t.Fatal(err)
 	}
-	// The clock goes back (a correction of the device clock): the end is clamped to the start.
+	// The clock goes back (a correction of the device clock): the fact still gets a length, a second.
 	e.svc.SetClock(func() time.Time { return msk(t, 2026, 10, 14, 11, 0) })
 	stopped, err := e.svc.Stop(ctx, e.user, in.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	same(t, stopped.ActualEnd, msk(t, 2026, 10, 14, 12, 0), "actual end")
+	same(t, stopped.ActualEnd, msk(t, 2026, 10, 14, 12, 0).Add(time.Second), "actual end")
 }
 
 func TestTwoStartsAtOnceStartOnce(t *testing.T) {
@@ -542,12 +542,12 @@ func TestListFindsTasksByPlanOrFact(t *testing.T) {
 	ctx := context.Background()
 	planned := e.planned("План 10-11")
 	if _, err := e.svc.EditTracking(ctx, e.user, planned.ID, task.TrackingInput{
-		ActualStart: ptr(msk(t, 2026, 10, 14, 11, 30)), ActualEnd: ptr(msk(t, 2026, 10, 14, 12, 30)),
+		ActualStart: ptr(msk(t, 2026, 10, 14, 11, 30)), ActualEnd: ptr(msk(t, 2026, 10, 14, 12, 0)),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.svc.CreateUnplanned(ctx, e.user, task.UnplannedInput{
-		Title: "Вне плана", ActualStart: ptr(msk(t, 2026, 10, 14, 15, 0)), ActualEnd: ptr(msk(t, 2026, 10, 14, 16, 0)),
+		Title: "Вне плана", ActualStart: ptr(msk(t, 2026, 10, 14, 8, 0)), ActualEnd: ptr(msk(t, 2026, 10, 14, 8, 30)),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -566,12 +566,12 @@ func TestListFindsTasksByPlanOrFact(t *testing.T) {
 	if got := titles(msk(t, 2026, 10, 14, 10, 15), msk(t, 2026, 10, 14, 10, 30)); got != "Таймер,План 10-11" {
 		t.Errorf("plan window: %q", got)
 	}
-	// By the fact only: 11:30-12:30 reaches beyond the plan, and the timer runs until now (12:00).
-	if got := titles(msk(t, 2026, 10, 14, 12, 15), msk(t, 2026, 10, 14, 12, 20)); got != "План 10-11" {
+	// By the fact only: 11:30-12:00 lies after the plan (10-11).
+	if got := titles(msk(t, 2026, 10, 14, 11, 40), msk(t, 2026, 10, 14, 11, 50)); got != "Таймер,План 10-11" {
 		t.Errorf("fact window after the plan: %q", got)
 	}
 	// A task outside the plan is found by its fact.
-	if got := titles(msk(t, 2026, 10, 14, 15, 30), msk(t, 2026, 10, 14, 15, 40)); got != "Вне плана" {
+	if got := titles(msk(t, 2026, 10, 14, 8, 10), msk(t, 2026, 10, 14, 8, 20)); got != "Вне плана" {
 		t.Errorf("unplanned window: %q", got)
 	}
 	// A running timer reaches up to now and not beyond.
@@ -671,5 +671,129 @@ func TestTheTableKeepsStatusAndFactConsistent(t *testing.T) {
 	// Unplanned and without a fact is nothing.
 	if _, err := e.pool.Exec(ctx, `INSERT INTO task_instances (user_id, title, status) VALUES ($1, 'x', 'in_progress')`, e.user); err == nil {
 		t.Error("a task with neither plan nor fact was accepted")
+	}
+}
+
+func TestOnlyTheMarkCanBeRemovedFromAnUnplannedTaskNever(t *testing.T) {
+	e := newTrackEnv(t)
+	ctx := context.Background()
+	free, err := e.svc.CreateUnplanned(ctx, e.user, task.UnplannedInput{
+		Title: "Звонок", ActualStart: ptr(msk(t, 2026, 10, 14, 8, 0)), ActualEnd: ptr(msk(t, 2026, 10, 14, 8, 20)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Neither "planned" nor "not done" make sense without a plan: the fact is all that is left, and
+	// the table would refuse a task with neither (this must be a clean refusal, not a database error).
+	for _, status := range []string{"planned", "not_done"} {
+		_, err := e.svc.EditTracking(ctx, e.user, free.ID, task.TrackingInput{Status: ptr(status)})
+		wantState(t, err, task.CodeInvalidState)
+	}
+	if got, _ := e.svc.Get(ctx, e.user, free.ID); got.Status != "done" || got.ActualStart == nil {
+		t.Errorf("the task changed: %+v", got)
+	}
+}
+
+func TestARescheduledTaskIsHistoryForEdits(t *testing.T) {
+	e := newTrackEnv(t)
+	ctx := context.Background()
+	src := e.planned("Планёрка")
+	if _, err := e.svc.Reschedule(ctx, e.user, src.ID, msk(t, 2026, 10, 15, 10, 0), msk(t, 2026, 10, 15, 11, 0), ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []task.Scope{task.ScopeThis, task.ScopeFollowing, task.ScopeAll} {
+		_, err := e.svc.Update(ctx, e.user, src.ID, scope, task.UpdateInput{Title: ptr("Другое")})
+		wantState(t, err, task.CodeInvalidState)
+	}
+	if got, _ := e.svc.Get(ctx, e.user, src.ID); got.Title != "Планёрка" {
+		t.Errorf("title = %q: the original was edited", got.Title)
+	}
+}
+
+func TestTheMarkOfAnOrphanedRescheduleCanBeRemoved(t *testing.T) {
+	e := newTrackEnv(t)
+	ctx := context.Background()
+	src := e.planned("Планёрка")
+	moved, err := e.svc.Reschedule(ctx, e.user, src.ID, msk(t, 2026, 10, 15, 10, 0), msk(t, 2026, 10, 15, 11, 0), "совещание")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// While the new task exists, the original is history.
+	_, err = e.svc.EditTracking(ctx, e.user, src.ID, task.TrackingInput{Status: ptr("planned")})
+	wantState(t, err, task.CodeInvalidState)
+
+	// The new task is deleted: nothing is left of the move, and the user can take the task back.
+	if err := e.svc.Delete(ctx, e.user, moved.ID, task.ScopeThis); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []task.TrackingInput{
+		{Status: ptr("done")},
+		{Status: ptr("not_done")},
+		{ActualStart: ptr(msk(t, 2026, 10, 14, 10, 0)), ActualEnd: ptr(msk(t, 2026, 10, 14, 11, 0))},
+	} {
+		_, err := e.svc.EditTracking(ctx, e.user, src.ID, in)
+		wantState(t, err, task.CodeInvalidState)
+	}
+	back, err := e.svc.EditTracking(ctx, e.user, src.ID, task.TrackingInput{Status: ptr("planned")})
+	if err != nil || back.Status != "planned" || back.RescheduledTo != nil {
+		t.Fatalf("back = %+v, %v", back, err)
+	}
+	if back.Comment != "совещание" {
+		t.Errorf("comment = %q: removing the mark keeps it", back.Comment)
+	}
+	// And it can be rescheduled again.
+	if _, err := e.svc.Reschedule(ctx, e.user, src.ID, msk(t, 2026, 10, 16, 10, 0), msk(t, 2026, 10, 16, 11, 0), ""); err != nil {
+		t.Errorf("reschedule again: %v", err)
+	}
+}
+
+func TestCompleteDoesNotOverwriteAnEditedFact(t *testing.T) {
+	e := newTrackEnv(t)
+	ctx := context.Background()
+	for _, status := range []string{"done", "partial"} {
+		in := e.planned("Спорт " + status)
+		if _, err := e.svc.EditTracking(ctx, e.user, in.ID, task.TrackingInput{
+			Status: ptr(status), ActualStart: ptr(msk(t, 2026, 10, 14, 10, 10)), ActualEnd: ptr(msk(t, 2026, 10, 14, 10, 50)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// A second tap, or a stale tab: nothing changes.
+		got, err := e.svc.Complete(ctx, e.user, in.ID)
+		if err != nil || got.Status != status {
+			t.Fatalf("Complete on %s: %+v, %v", status, got, err)
+		}
+		same(t, got.ActualStart, msk(t, 2026, 10, 14, 10, 10), status+" actual start")
+		same(t, got.ActualEnd, msk(t, 2026, 10, 14, 10, 50), status+" actual end")
+	}
+}
+
+func TestAFactCannotBeInTheFuture(t *testing.T) {
+	e := newTrackEnv(t) // now = 12:00
+	ctx := context.Background()
+	future := msk(t, 2026, 10, 14, 13, 0)
+	soon := msk(t, 2026, 10, 14, 12, 0).Add(time.Minute) // within the tolerance of a minute
+
+	_, err := e.svc.CreateUnplanned(ctx, e.user, task.UnplannedInput{Title: "x", ActualStart: &future})
+	wantField(t, err, "actual_start")
+	_, err = e.svc.CreateUnplanned(ctx, e.user, task.UnplannedInput{
+		Title: "x", ActualStart: ptr(msk(t, 2026, 10, 14, 11, 0)), ActualEnd: &future,
+	})
+	wantField(t, err, "actual_end")
+	if _, err := e.svc.CreateUnplanned(ctx, e.user, task.UnplannedInput{Title: "x", ActualStart: &soon}); err != nil {
+		t.Errorf("a start a few seconds ahead of the server clock is fine: %v", err)
+	}
+
+	in := e.planned("Спорт")
+	_, err = e.svc.EditTracking(ctx, e.user, in.ID, task.TrackingInput{ActualStart: ptr(msk(t, 2026, 10, 14, 11, 0)), ActualEnd: &future})
+	wantField(t, err, "actual_end")
+	_, err = e.svc.EditTracking(ctx, e.user, in.ID, task.TrackingInput{ActualStart: &future})
+	wantField(t, err, "actual_start")
+
+	// "Done" in one tap takes the plan as it is, also when the plan reaches into the future:
+	// finishing early and tapping before the planned end is the usual case.
+	later := e.create("Позже", msk(t, 2026, 10, 14, 11, 30), msk(t, 2026, 10, 14, 13, 0))
+	if got, err := e.svc.Complete(ctx, e.user, later.ID); err != nil || got.Status != "done" {
+		t.Errorf("Complete on a plan that ends later: %+v, %v", got, err)
 	}
 }

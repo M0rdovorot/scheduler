@@ -14,7 +14,12 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
 
-const maxCommentLen = 2000
+const (
+	maxCommentLen = 2000
+
+	// futureTolerance is how far ahead of the server clock a fact may be: devices differ a little.
+	futureTolerance = time.Minute
+)
 
 // Statuses that a task can be given by hand.
 const (
@@ -26,14 +31,23 @@ const (
 	StatusRescheduled = "rescheduled"
 )
 
+// notInTheFuture refuses a fact that has not happened yet: a fact is what already took place.
+func (s *Service) notInTheFuture(field string, t *time.Time) error {
+	if t != nil && t.After(s.now().Add(futureTolerance)) {
+		return &validation.Error{Code: CodeFactInFuture, Field: field, Message: "a fact cannot be in the future"}
+	}
+	return nil
+}
+
 func invalidState(message string) error {
 	return &validation.Error{Code: CodeInvalidState, Field: "status", Message: message}
 }
 
 // lockForTracking locks a task of the user for a change of its status. Cancelled
-// tasks (deleted occurrences) are not found; rescheduled ones are history that
-// tracking leaves alone.
-func lockForTracking(ctx context.Context, q *store.Queries, userID, id uuid.UUID) (store.TaskInstance, error) {
+// tasks (deleted occurrences) are not found. A rescheduled task is history that
+// tracking leaves alone, unless allowOrphan is set and the task it was moved to
+// has been deleted: then nothing is left of the move, and the mark can be removed.
+func lockForTracking(ctx context.Context, q *store.Queries, userID, id uuid.UUID, allowOrphan bool) (store.TaskInstance, error) {
 	cur, err := q.LockInstance(ctx, store.LockInstanceParams{ID: id, UserID: userID})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.TaskInstance{}, ErrNotFound
@@ -42,15 +56,24 @@ func lockForTracking(ctx context.Context, q *store.Queries, userID, id uuid.UUID
 		return store.TaskInstance{}, fmt.Errorf("lock instance: %w", err)
 	}
 	if cur.Status == StatusRescheduled {
-		return store.TaskInstance{}, invalidState("the task was rescheduled; its status can no longer be changed")
+		if !allowOrphan {
+			return store.TaskInstance{}, invalidState("the task was rescheduled; its status can no longer be changed")
+		}
+		has, err := q.HasLiveReplacement(ctx, store.HasLiveReplacementParams{ID: uuid.NullUUID{UUID: cur.ID, Valid: true}, UserID: userID})
+		if err != nil {
+			return store.TaskInstance{}, fmt.Errorf("check replacement: %w", err)
+		}
+		if has {
+			return store.TaskInstance{}, invalidState("the task was rescheduled; change the new task instead")
+		}
 	}
 	return cur, nil
 }
 
-func (s *Service) inTracking(ctx context.Context, userID, id uuid.UUID, fn func(q *store.Queries, cur store.TaskInstance) error) (Instance, error) {
+func (s *Service) inTracking(ctx context.Context, userID, id uuid.UUID, allowOrphan bool, fn func(q *store.Queries, cur store.TaskInstance) error) (Instance, error) {
 	var out Instance
 	err := s.store.InTx(ctx, func(q *store.Queries) error {
-		cur, err := lockForTracking(ctx, q, userID, id)
+		cur, err := lockForTracking(ctx, q, userID, id, allowOrphan)
 		if err != nil {
 			return err
 		}
@@ -73,11 +96,16 @@ func set(ctx context.Context, q *store.Queries, userID uuid.UUID, cur store.Task
 	return nil
 }
 
-// Complete is "Done" in one tap: the fact becomes equal to the plan (FR-5.3).
+// Complete is "Done" in one tap: the fact becomes equal to the plan (FR-5.3). On a
+// task that is already done or partial it changes nothing.
 func (s *Service) Complete(ctx context.Context, userID, id uuid.UUID) (Instance, error) {
-	return s.inTracking(ctx, userID, id, func(q *store.Queries, cur store.TaskInstance) error {
+	return s.inTracking(ctx, userID, id, false, func(q *store.Queries, cur store.TaskInstance) error {
 		if cur.PlannedStart == nil || cur.PlannedEnd == nil {
 			return invalidState("a task outside the plan has no plan to take the fact from")
+		}
+		// Already marked: a second tap (or a stale tab) must not replace a fact that was edited.
+		if cur.Status == StatusDone || cur.Status == StatusPartial {
+			return nil
 		}
 		return set(ctx, q, userID, cur, StatusDone, cur.PlannedStart, cur.PlannedEnd, cur.Comment)
 	})
@@ -86,7 +114,7 @@ func (s *Service) Complete(ctx context.Context, userID, id uuid.UUID) (Instance,
 // Start starts a timer: the fact begins now. Several tasks may run at once.
 func (s *Service) Start(ctx context.Context, userID, id uuid.UUID) (Instance, error) {
 	now := s.now()
-	return s.inTracking(ctx, userID, id, func(q *store.Queries, cur store.TaskInstance) error {
+	return s.inTracking(ctx, userID, id, false, func(q *store.Queries, cur store.TaskInstance) error {
 		if cur.Status != StatusPlanned && cur.Status != StatusNotDone {
 			return invalidState("only a planned task can be started")
 		}
@@ -98,13 +126,14 @@ func (s *Service) Start(ctx context.Context, userID, id uuid.UUID) (Instance, er
 // be changed to partial afterwards.
 func (s *Service) Stop(ctx context.Context, userID, id uuid.UUID) (Instance, error) {
 	now := s.now()
-	return s.inTracking(ctx, userID, id, func(q *store.Queries, cur store.TaskInstance) error {
+	return s.inTracking(ctx, userID, id, false, func(q *store.Queries, cur store.TaskInstance) error {
 		if cur.Status != StatusInProgress || cur.ActualStart == nil {
 			return invalidState("the task is not running")
 		}
+		// With the clock behind the start the fact still gets a length, a second.
 		end := now
-		if end.Before(*cur.ActualStart) {
-			end = *cur.ActualStart
+		if !end.After(*cur.ActualStart) {
+			end = cur.ActualStart.Add(time.Second)
 		}
 		return set(ctx, q, userID, cur, StatusDone, cur.ActualStart, &end, cur.Comment)
 	})
@@ -123,7 +152,7 @@ type TrackingInput struct {
 // EditTracking is the manual edit of the status, the fact and the comment
 // (FR-5.3, FR-5.6). Setting the status back to planned removes the mark.
 func (s *Service) EditTracking(ctx context.Context, userID, id uuid.UUID, in TrackingInput) (Instance, error) {
-	return s.inTracking(ctx, userID, id, func(q *store.Queries, cur store.TaskInstance) error {
+	return s.inTracking(ctx, userID, id, true, func(q *store.Queries, cur store.TaskInstance) error {
 		comment := cur.Comment
 		if in.Comment != nil {
 			if !validation.ValidText(*in.Comment) {
@@ -135,6 +164,12 @@ func (s *Service) EditTracking(ctx context.Context, userID, id uuid.UUID, in Tra
 			comment = *in.Comment
 		}
 
+		if err := s.notInTheFuture("actual_start", in.ActualStart); err != nil {
+			return err
+		}
+		if err := s.notInTheFuture("actual_end", in.ActualEnd); err != nil {
+			return err
+		}
 		status, start, end, err := nextTracking(cur, in)
 		if err != nil {
 			return err
@@ -146,6 +181,12 @@ func (s *Service) EditTracking(ctx context.Context, userID, id uuid.UUID, in Tra
 // nextTracking works out the status and the fact that an edit leads to.
 func nextTracking(cur store.TaskInstance, in TrackingInput) (status string, start, end *time.Time, err error) {
 	hasFactInput := in.ActualStart != nil || in.ActualEnd != nil
+	if cur.Status == StatusRescheduled {
+		// Only reachable when the task it was moved to is gone: the mark may be removed.
+		if hasFactInput || (in.Status != nil && *in.Status != StatusPlanned) {
+			return "", nil, nil, invalidState("a rescheduled task can only go back to planned")
+		}
+	}
 	if in.Status != nil {
 		switch *in.Status {
 		case StatusPlanned, StatusInProgress, StatusDone, StatusPartial, StatusNotDone:
@@ -183,8 +224,9 @@ func nextTracking(cur store.TaskInstance, in TrackingInput) (status string, star
 		if hasFactInput {
 			return "", nil, nil, &validation.Error{Field: "actual_start", Message: "a task that is " + status + " has no fact"}
 		}
-		if status == StatusPlanned && cur.PlannedStart == nil {
-			return "", nil, nil, invalidState("a task outside the plan cannot go back to planned; delete it instead")
+		if cur.PlannedStart == nil {
+			// Without a plan the fact is all that is left of the task.
+			return "", nil, nil, invalidState("a task outside the plan keeps its fact; delete it instead")
 		}
 		return status, nil, nil, nil
 	case StatusInProgress:
@@ -224,7 +266,7 @@ func (s *Service) Reschedule(ctx context.Context, userID, id uuid.UUID, start, e
 
 	var out Instance
 	err := s.store.InTx(ctx, func(q *store.Queries) error {
-		cur, err := lockForTracking(ctx, q, userID, id)
+		cur, err := lockForTracking(ctx, q, userID, id, false)
 		if err != nil {
 			return err
 		}
@@ -284,6 +326,12 @@ func (s *Service) CreateUnplanned(ctx context.Context, userID uuid.UUID, in Unpl
 		return Instance{}, err
 	}
 
+	if err := s.notInTheFuture("actual_start", in.ActualStart); err != nil {
+		return Instance{}, err
+	}
+	if err := s.notInTheFuture("actual_end", in.ActualEnd); err != nil {
+		return Instance{}, err
+	}
 	start := s.now()
 	if in.ActualStart != nil {
 		start = *in.ActualStart

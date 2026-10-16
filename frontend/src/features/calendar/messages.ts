@@ -6,6 +6,7 @@ export function taskErrorMessage(error: unknown): string {
     if (error.code === 'series_date_change') {
       return 'Для всей серии нельзя менять дату. Выберите «Только это дело» или оставьте прежнюю дату'
     }
+    if (error.code === 'fact_in_future') return 'Факт не может быть в будущем'
     if (error.code === 'invalid_state') {
       return 'Это действие недоступно для дела в таком состоянии. Обновите календарь и попробуйте снова'
     }

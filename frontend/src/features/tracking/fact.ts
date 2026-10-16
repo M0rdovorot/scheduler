@@ -66,8 +66,13 @@ export function actionsFor(instance: Instance) {
     stop: status === 'in_progress',
     reschedule: planned && (status === 'planned' || status === 'not_done'),
     editFact: !history,
-    // Planned again: possible for any marked task that has a plan to go back to.
-    removeMark: planned && !history && status !== 'planned',
+    // Planned again: for any marked task with a plan to go back to. A rescheduled one qualifies
+    // only once the task it was moved to is gone.
+    removeMark:
+      planned &&
+      status !== 'planned' &&
+      status !== 'cancelled' &&
+      (status !== 'rescheduled' || instance.rescheduled_to === null),
   }
 }
 

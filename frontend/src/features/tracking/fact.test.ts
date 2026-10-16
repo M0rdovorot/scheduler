@@ -122,8 +122,13 @@ describe('actionsFor', () => {
     })
   })
 
-  it('leaves a rescheduled task alone', () => {
-    expect(actionsFor(with_({ status: 'rescheduled' }))).toEqual({
+  it('lets the mark of a rescheduled task be removed once the new task is gone', () => {
+    expect(actionsFor(with_({ status: 'rescheduled' })).removeMark).toBe(true)
+  })
+
+  it('leaves a rescheduled task alone while the new task exists', () => {
+    const link = { id: 'n', planned_start: base.planned_start!, planned_end: base.planned_end! }
+    expect(actionsFor(with_({ status: 'rescheduled', rescheduled_to: link }))).toEqual({
       complete: false,
       start: false,
       stop: false,

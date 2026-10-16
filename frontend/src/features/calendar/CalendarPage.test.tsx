@@ -1100,13 +1100,32 @@ describe('calendar', () => {
       const card = within(await dialog())
 
       expect(card.getByText(/Перенесено на/)).toBeTruthy()
-      // Nothing can be done with a rescheduled task but read it.
+      // Nothing can be done with a rescheduled task but read it (and delete it).
       for (const name of ['Выполнено', 'Старт', 'Перенести', 'Снять отметку', 'Править факт']) {
         expect(card.queryByRole('button', { name })).toBeNull()
       }
+      expect(card.queryByLabelText('Название')).toBeNull()
+      expect(card.queryByRole('button', { name: 'Сохранить' })).toBeNull()
+      expect(card.getByRole('button', { name: 'Удалить' })).toBeTruthy()
       await ui.click(card.getByRole('button', { name: 'Перейти' }))
       await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
       expect(column('2026-10-16')).toBeTruthy()
+    })
+
+    it('lets the mark of a rescheduled task be removed when the new task is gone', async () => {
+      const ui = userEvent.setup()
+      instances = [past('t1', { status: 'rescheduled', comment: 'совещание' })]
+      renderCalendar()
+      await ui.click(await screen.findByRole('button', { name: /Спорт/ }))
+      const card = within(await dialog())
+
+      expect(card.queryByText(/Перенесено на/)).toBeNull()
+      await ui.click(card.getByRole('button', { name: 'Снять отметку' }))
+      await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+      expect(mutations()[0]).toMatchObject({
+        path: '/instances/t1/tracking',
+        body: { status: 'planned' },
+      })
     })
 
     it('warns that deleting a marked task drops its fact, and asks before deleting', async () => {

@@ -31,6 +31,7 @@ const (
 	CodeSeriesDateChange = "series_date_change"
 	CodeNoOccurrences    = "no_occurrences"
 	CodeInvalidState     = "invalid_state"
+	CodeFactInFuture     = "fact_in_future"
 )
 
 var (
@@ -209,6 +210,10 @@ func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, scope Scope,
 			return fmt.Errorf("lock instance: %w", err)
 		}
 
+		// A rescheduled task is history: what changes is the task it was moved to.
+		if cur.Status == StatusRescheduled {
+			return invalidState("the task was rescheduled; edit the new task instead")
+		}
 		if scope != ScopeThis {
 			if !cur.SeriesID.Valid {
 				return &validation.Error{Field: "scope", Message: "the task is not part of a series"}

@@ -61,3 +61,10 @@ RETURNING id;
 INSERT INTO instance_categories (instance_id, category_id, user_id)
 SELECT @to_id::uuid, src.category_id, src.user_id FROM instance_categories src
 WHERE src.instance_id = @from_id AND src.user_id = @user_id;
+
+-- name: HasLiveReplacement :one
+-- Whether a rescheduled task still has the task it was moved to.
+SELECT EXISTS (
+    SELECT 1 FROM task_instances r
+    WHERE r.rescheduled_from_id = @id AND r.user_id = @user_id AND r.status <> 'cancelled'
+) AS has_replacement;
