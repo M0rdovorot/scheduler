@@ -4,6 +4,7 @@ import type { Category, Instance, Scope, Series } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog } from '@/components/Dialog'
 import { CategoryPicker } from '@/features/categories/CategoryPicker'
+import { TaskReminders } from '@/features/reminders/TaskReminders'
 import { RepeatEditor } from '@/features/recurrence/RepeatEditor'
 import { describeRepeat, fromRRule } from '@/features/recurrence/repeat'
 import { ScopeDialog, type ScopeOption } from '@/features/recurrence/ScopeDialog'
@@ -137,7 +138,9 @@ function TaskFormBody({
   const [compact, setCompact] = useState(startCompact)
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'save-scope' | 'delete' | 'reschedule' | null>(null)
+  const [dialog, setDialog] = useState<'save-scope' | 'delete' | 'reschedule' | 'reminders' | null>(
+    null,
+  )
 
   const inSeries = editing?.series_id != null
   // A task outside the plan has a title, description and categories, but no planned time.
@@ -379,6 +382,18 @@ function TaskFormBody({
           </form>
         )}
 
+        {editing && !readOnly && (
+          <div className="mt-4 border-t border-separator pt-4">
+            <button
+              type="button"
+              onClick={() => setDialog('reminders')}
+              className="w-full rounded-xl bg-surface px-4 py-3"
+            >
+              Напоминания
+            </button>
+          </div>
+        )}
+
         {editing && (
           <div className="mt-4 border-t border-separator pt-4">
             <button
@@ -448,6 +463,10 @@ function TaskFormBody({
             setDeleteError(null)
           }}
         />
+      )}
+
+      {editing && dialog === 'reminders' && (
+        <TaskReminders instance={editing} onClose={() => setDialog(null)} />
       )}
 
       {editing && dialog === 'reschedule' && (

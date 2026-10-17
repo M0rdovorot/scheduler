@@ -50,6 +50,14 @@ export async function resetData(api: Api) {
   const categories = (await api.get('/categories')) as { id: string; parent_id: string | null }[]
   for (const c of categories.filter((c) => c.parent_id === null))
     await api.del(`/categories/${c.id}`)
+  await api.put('/reminders/global', {
+    enabled: true,
+    quiet_hours: null,
+    rules: [
+      { kind: 'before_start', offset_minutes: 10, time_of_day: null },
+      { kind: 'after_end', offset_minutes: 0, time_of_day: null },
+    ],
+  })
   await api.patch('/me/settings', { slot_minutes: 30, default_view: 'day', timezone: TZ })
 }
 

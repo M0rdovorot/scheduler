@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useClearPlacement, useCreateHabit, useSetPlacement, useUpdateHabit } from '@/api/habits'
 import type { Habit } from '@/api/types'
 import { Dialog } from '@/components/Dialog'
+import { ReminderDialog } from '@/features/reminders/LevelEditor'
 import { ColorPicker } from '@/features/categories/ColorPicker'
 import { defaultColor } from '@/features/categories/palette'
 import { usePlatform } from '@/platform/context'
@@ -45,6 +46,7 @@ export function HabitForm({ habit, onClose }: HabitFormProps) {
     habit ? draftFromHabit(habit) : emptyDraft(defaultColor),
   )
   const [error, setError] = useState<string | null>(null)
+  const [reminding, setReminding] = useState(false)
 
   const errors = validateDraft(draft)
   const busy = [create, update, setPlacement, clearPlacement].some((m) => m.isPending)
@@ -254,6 +256,25 @@ export function HabitForm({ habit, onClose }: HabitFormProps) {
           )}
         </div>
 
+        {habit && (
+          <div>
+            {habit.placement ? (
+              <p className="text-sm text-hint">
+                Привычка стоит в календаре и напоминает как обычное дело: настройте напоминания у её
+                дела в календаре.
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setReminding(true)}
+                className="w-full rounded-xl bg-surface px-4 py-3"
+              >
+                Напоминания
+              </button>
+            )}
+          </div>
+        )}
+
         {error && (
           <p role="alert" className="text-danger">
             {error}
@@ -277,6 +298,14 @@ export function HabitForm({ habit, onClose }: HabitFormProps) {
           </button>
         </div>
       </form>
+      {habit && reminding && (
+        <ReminderDialog
+          scope="habit"
+          id={habit.id}
+          subject={habit.title}
+          onClose={() => setReminding(false)}
+        />
+      )}
     </Dialog>
   )
 }

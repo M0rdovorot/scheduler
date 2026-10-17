@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { useMe, useUpdateSettings } from '@/api/me'
 import type { SlotMinutes, User, ViewMode } from '@/api/types'
 import { listTimeZones } from '@/lib/timezone'
+import { GlobalReminders } from '@/features/reminders/GlobalReminders'
 import { usePlatform } from '@/platform/context'
 import {
   buildSettingsPatch,
@@ -21,6 +22,7 @@ export function SettingsPage() {
       {isPending && <p className="mt-3 text-hint">Загрузка…</p>}
       {isError && <p className="mt-3 text-danger">Не удалось загрузить настройки</p>}
       {user && <SettingsForm user={user} />}
+      {user && <GlobalReminders />}
     </main>
   )
 }

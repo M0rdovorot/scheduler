@@ -26,6 +26,8 @@ function apiServer(req: StubRequest): Response {
       return json(200, [])
     case 'GET /me':
       return json(200, user)
+    case 'GET /reminders/global':
+      return json(200, { enabled: true, quiet_hours: null, rules: [] })
     default:
       return json(404, { code: 'not_found', message: 'not found' })
   }

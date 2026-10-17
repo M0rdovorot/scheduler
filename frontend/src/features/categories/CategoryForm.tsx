@@ -10,6 +10,7 @@ import {
 import type { Category } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog } from '@/components/Dialog'
+import { ReminderDialog } from '@/features/reminders/LevelEditor'
 import { usePlatform } from '@/platform/context'
 import { ColorPicker } from './ColorPicker'
 import {
@@ -82,6 +83,7 @@ function CategoryFormBody({ initialParentId, editing, forest, onClose }: Categor
   const [error, setError] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [reminding, setReminding] = useState(false)
 
   const errors = validateDraft(draft)
   const changes = editing ? diffDraft(editing, draft) : null
@@ -198,6 +200,18 @@ function CategoryFormBody({ initialParentId, editing, forest, onClose }: Categor
           </button>
         </form>
 
+        {editing && !editing.archived_at && (
+          <div className="mt-4 border-t border-separator pt-4">
+            <button
+              type="button"
+              onClick={() => setReminding(true)}
+              className="w-full rounded-xl bg-surface px-4 py-3"
+            >
+              Напоминания
+            </button>
+          </div>
+        )}
+
         {editing && (
           <div className="mt-4 flex gap-2 border-t border-separator pt-4">
             {editing.archived_at ? (
@@ -236,6 +250,15 @@ function CategoryFormBody({ initialParentId, editing, forest, onClose }: Categor
           <p className="mt-2 text-sm text-hint">Подкатегории ({descendants}) тоже уйдут в архив.</p>
         )}
       </Dialog>
+
+      {editing && reminding && (
+        <ReminderDialog
+          scope="category"
+          id={editing.id}
+          subject={editing.name}
+          onClose={() => setReminding(false)}
+        />
+      )}
 
       {editing && confirmingDelete && (
         <ConfirmDialog
