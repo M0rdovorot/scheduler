@@ -1,0 +1,10 @@
+.git
+bin
+.env
+**/.env
+**/node_modules
+frontend/dist
+frontend/e2e/results
+frontend/e2e/screenshots
+frontend/playwright-report
+docs

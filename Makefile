@@ -10,7 +10,7 @@ GO_TOOLCHAIN         := go1.27.1
 
 DEV_DB_URL := postgres://scheduler:scheduler@127.0.0.1:5433/scheduler?sslmode=disable
 
-.PHONY: help install tools gen gen-api gen-sqlc gen-ts lint test e2e e2e-setup build dev-db dev-db-down dev dev-web
+.PHONY: deploy deploy-down help install tools gen gen-api gen-sqlc gen-ts lint test e2e e2e-setup build dev-db dev-db-down dev dev-web
 
 help:
 	@echo "install    install frontend dependencies (npm ci)"
@@ -76,3 +76,10 @@ dev:
 
 dev-web:
 	cd frontend && npm run dev
+
+# Production stack (deploy/docker-compose.yml); needs deploy/.env, see deploy/.env.example.
+deploy:
+	cd deploy && docker compose up -d --build
+
+deploy-down:
+	cd deploy && docker compose down

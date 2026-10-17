@@ -44,6 +44,7 @@ docs/              требования, архитектура, план
 | `make e2e` | тесты Playwright на изолированном стенде: своя БД `scheduler_e2e`, бэкенд `:8082`, Vite `:5174`; скриншоты в `frontend/e2e/screenshots/` |
 | `make build` | бинарник `bin/scheduler` и `frontend/dist` |
 | `make dev-db` | Postgres 18 на `127.0.0.1:5433` (`docker-compose.dev.yml`) |
+| `make deploy` / `make deploy-down` | поднимает и останавливает боевой стенд из `deploy/` (db, backend, web с Caddy); нужен `deploy/.env` (образец — `deploy/.env.example`) |
 | `make dev` / `make dev-web` | бэкенд на `127.0.0.1:8081` (с `DEV_AUTH=true`) / Vite с прокси `/api` на бэкенд |
 
 Нюансы:
