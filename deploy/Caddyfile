@@ -1,3 +1,10 @@
+{
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+	# The admin API stays on the loopback of the host.
+	admin 127.0.0.1:2019
+}
+
 # The only public entry: TLS for {$DOMAIN} (Caddy gets and renews the certificate itself),
 # the Mini App from /srv and the API on /api.
 {$DOMAIN} {
@@ -10,7 +17,7 @@
 	}
 
 	handle /api/* {
-		reverse_proxy backend:8081
+		reverse_proxy 127.0.0.1:8081
 	}
 
 	handle {

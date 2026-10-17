@@ -11,7 +11,9 @@ services:
       POSTGRES_USER: scheduler
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: scheduler
-    # No published ports: only the backend reaches it.
+    # Only the backend reaches it, over the loopback of the host. 5432 may belong to another project.
+    ports:
+      - "127.0.0.1:5434:5432"
     volumes:
       - db-data:/var/lib/postgresql
     healthcheck:
@@ -20,18 +22,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # backend and web use the network of the host. Telegram's API is reachable from this server over
+  # IPv6 only, and Docker's bridge networks have no IPv6 here: the bot would time out inside one.
+  # Nothing but Caddy listens on a public port; the backend listens on the loopback.
   backend:
     build:
       context: ..
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    network_mode: host
     depends_on:
       db:
         condition: service_healthy
     environment:
       APP_ENV: prod
-      HTTP_ADDR: 0.0.0.0:8081
-      DATABASE_URL: postgres://scheduler:${POSTGRES_PASSWORD}@db:5432/scheduler?sslmode=disable
+      HTTP_ADDR: 127.0.0.1:8081
+      DATABASE_URL: postgres://scheduler:${POSTGRES_PASSWORD}@127.0.0.1:5434/scheduler?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN in .env}
       BOT_ENABLED: ${BOT_ENABLED:-true}
       WEBAPP_URL: https://${DOMAIN:?set DOMAIN in .env}
@@ -42,15 +48,14 @@ services:
       context: ..
       dockerfile: deploy/web.Dockerfile
     restart: unless-stopped
+    network_mode: host
     depends_on:
       - backend
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-    ports:
       # 80 and 443 are what Let's Encrypt and Telegram need; they can be moved for a trial run.
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-      - "${HTTPS_PORT:-443}:443/udp"
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
     volumes:
       - caddy-data:/data
       - caddy-config:/config
