@@ -24,7 +24,9 @@ type Bot struct {
 // the "Open" buttons are left out.
 func NewBot(token, webAppURL string, svc *Service, log *slog.Logger) (*Bot, error) {
 	t := &Bot{svc: svc, webAppURL: webAppURL, log: log}
+	// No getMe at startup: an unreachable Telegram must not keep the API from starting.
 	b, err := bot.New(token,
+		bot.WithSkipGetMe(),
 		bot.WithAllowedUpdates(bot.AllowedUpdates{"message", "callback_query"}),
 		bot.WithErrorsHandler(func(err error) { log.Error("telegram", "err", err) }),
 	)

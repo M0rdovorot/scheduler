@@ -77,11 +77,12 @@ func (s *Service) planTasks(ctx context.Context, userID uuid.UUID, snap *snapsho
 			if fire.Before(from) || fire.After(to) || !Needed(rule.Kind, in.Status, *in.PlannedEnd, now) {
 				continue
 			}
-			// Moving the task gives it new reminders: the start is part of the key.
-			key := fmt.Sprintf("inst:%s:%s:%d:%d", in.ID, rule.Kind, rule.OffsetMinutes, in.PlannedStart.Unix())
+			// Moving the task gives it new reminders: its plan is part of the key.
+			key := fmt.Sprintf("inst:%s:%s:%d:%d:%d", in.ID, rule.Kind, rule.OffsetMinutes, in.PlannedStart.Unix(), in.PlannedEnd.Unix())
 			err := s.store.InsertNotification(ctx, store.InsertNotificationParams{
 				UserID: userID, InstanceID: uuid.NullUUID{UUID: in.ID, Valid: true},
 				Kind: string(rule.Kind), DedupeKey: key, SendAt: snap.quiet.Shift(fire, loc),
+				PlanStart: in.PlannedStart, PlanEnd: in.PlannedEnd,
 			})
 			if err != nil {
 				return fmt.Errorf("queue notification: %w", err)
@@ -120,9 +121,10 @@ func (s *Service) planHabits(ctx context.Context, userID uuid.UUID, snap *snapsh
 					continue
 				}
 				key := fmt.Sprintf("habit:%s:%s:%d", h.ID, day.Format(time.DateOnly), rule.TimeOfDay)
+				forDate := day
 				err := s.store.InsertNotification(ctx, store.InsertNotificationParams{
 					UserID: userID, HabitID: uuid.NullUUID{UUID: h.ID, Valid: true},
-					Kind: string(HabitTime), DedupeKey: key, SendAt: snap.quiet.Shift(fire, loc),
+					Kind: string(HabitTime), DedupeKey: key, SendAt: snap.quiet.Shift(fire, loc), ForDate: &forDate,
 				})
 				if err != nil {
 					return fmt.Errorf("queue habit notification: %w", err)

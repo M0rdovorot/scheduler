@@ -36,21 +36,30 @@ func (q *Queries) AddReminderRule(ctx context.Context, arg AddReminderRuleParams
 }
 
 const claimDueNotifications = `-- name: ClaimDueNotifications :many
-SELECT id, user_id, instance_id, habit_id, kind, dedupe_key, send_at, sent_at, gave_up_at, attempts, last_error, telegram_message_id, created_at FROM notifications
-WHERE sent_at IS NULL AND gave_up_at IS NULL AND send_at <= $1
-ORDER BY send_at, id
-LIMIT $2
-FOR UPDATE SKIP LOCKED
+UPDATE notifications
+SET claimed_until = $1::timestamptz
+WHERE id IN (
+    SELECT n.id FROM notifications n
+    WHERE n.sent_at IS NULL AND n.gave_up_at IS NULL AND n.send_at <= $2::timestamptz
+      AND (n.claimed_until IS NULL OR n.claimed_until <= $2::timestamptz)
+    ORDER BY n.send_at, n.id
+    LIMIT $3
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, user_id, instance_id, habit_id, kind, dedupe_key, send_at, sent_at, gave_up_at, attempts, last_error, telegram_message_id, created_at, plan_start, plan_end, for_date, claimed_until
 `
 
 type ClaimDueNotificationsParams struct {
-	Now   time.Time
-	Batch int32
+	LeaseUntil time.Time
+	Now        time.Time
+	Batch      int32
 }
 
-// Pending messages whose time has come. SKIP LOCKED lets two senders share the queue.
+// Pending messages whose time has come, leased to the caller until lease_until: another sender
+// (a second instance during a deploy) skips them, and so does the next pass if this one fails
+// before it marks them.
 func (q *Queries) ClaimDueNotifications(ctx context.Context, arg ClaimDueNotificationsParams) ([]Notification, error) {
-	rows, err := q.db.Query(ctx, claimDueNotifications, arg.Now, arg.Batch)
+	rows, err := q.db.Query(ctx, claimDueNotifications, arg.LeaseUntil, arg.Now, arg.Batch)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +81,10 @@ func (q *Queries) ClaimDueNotifications(ctx context.Context, arg ClaimDueNotific
 			&i.LastError,
 			&i.TelegramMessageID,
 			&i.CreatedAt,
+			&i.PlanStart,
+			&i.PlanEnd,
+			&i.ForDate,
+			&i.ClaimedUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -81,6 +94,58 @@ func (q *Queries) ClaimDueNotifications(ctx context.Context, arg ClaimDueNotific
 		return nil, err
 	}
 	return items, nil
+}
+
+const copyInstanceReminders = `-- name: CopyInstanceReminders :exec
+WITH src AS (
+    SELECT rs.id, rs.enabled FROM reminder_settings rs
+    WHERE rs.scope = 'instance' AND rs.instance_id = $1 AND rs.user_id = $2
+), ins AS (
+    INSERT INTO reminder_settings (user_id, scope, instance_id, enabled)
+    SELECT $2, 'instance', $3, enabled FROM src
+    RETURNING id
+)
+INSERT INTO reminder_rules (setting_id, kind, offset_minutes, time_of_day)
+SELECT (SELECT id FROM ins), r.kind, r.offset_minutes, r.time_of_day
+FROM reminder_rules r JOIN src ON r.setting_id = src.id
+`
+
+type CopyInstanceRemindersParams struct {
+	FromID uuid.NullUUID
+	UserID uuid.UUID
+	ToID   uuid.NullUUID
+}
+
+// A task that was rescheduled: the new one keeps the reminder settings of the original.
+func (q *Queries) CopyInstanceReminders(ctx context.Context, arg CopyInstanceRemindersParams) error {
+	_, err := q.db.Exec(ctx, copyInstanceReminders, arg.FromID, arg.UserID, arg.ToID)
+	return err
+}
+
+const copySeriesReminders = `-- name: CopySeriesReminders :exec
+WITH src AS (
+    SELECT rs.id, rs.enabled FROM reminder_settings rs
+    WHERE rs.scope = 'series' AND rs.series_id = $1 AND rs.user_id = $2
+), ins AS (
+    INSERT INTO reminder_settings (user_id, scope, series_id, enabled)
+    SELECT $2, 'series', $3, enabled FROM src
+    RETURNING id
+)
+INSERT INTO reminder_rules (setting_id, kind, offset_minutes, time_of_day)
+SELECT (SELECT id FROM ins), r.kind, r.offset_minutes, r.time_of_day
+FROM reminder_rules r JOIN src ON r.setting_id = src.id
+`
+
+type CopySeriesRemindersParams struct {
+	OldSeriesID uuid.NullUUID
+	UserID      uuid.UUID
+	NewSeriesID uuid.NullUUID
+}
+
+// A series that was cut in two: the tail keeps the reminder settings of the series.
+func (q *Queries) CopySeriesReminders(ctx context.Context, arg CopySeriesRemindersParams) error {
+	_, err := q.db.Exec(ctx, copySeriesReminders, arg.OldSeriesID, arg.UserID, arg.NewSeriesID)
+	return err
 }
 
 const deletePendingNotifications = `-- name: DeletePendingNotifications :exec
@@ -202,8 +267,9 @@ func (q *Queries) GetUserByTelegramID(ctx context.Context, providerUserID string
 }
 
 const insertNotification = `-- name: InsertNotification :exec
-INSERT INTO notifications (user_id, instance_id, habit_id, kind, dedupe_key, send_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO notifications (user_id, instance_id, habit_id, kind, dedupe_key, send_at, plan_start, plan_end, for_date)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9)
 ON CONFLICT (dedupe_key) DO NOTHING
 `
 
@@ -214,6 +280,9 @@ type InsertNotificationParams struct {
 	Kind       string
 	DedupeKey  string
 	SendAt     time.Time
+	PlanStart  *time.Time
+	PlanEnd    *time.Time
+	ForDate    *time.Time
 }
 
 func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotificationParams) error {
@@ -224,6 +293,9 @@ func (q *Queries) InsertNotification(ctx context.Context, arg InsertNotification
 		arg.Kind,
 		arg.DedupeKey,
 		arg.SendAt,
+		arg.PlanStart,
+		arg.PlanEnd,
+		arg.ForDate,
 	)
 	return err
 }
@@ -481,7 +553,7 @@ func (q *Queries) ListUserTelegramID(ctx context.Context, userID uuid.UUID) (str
 
 const markNotificationFailed = `-- name: MarkNotificationFailed :exec
 UPDATE notifications
-SET attempts = attempts + 1, last_error = $1,
+SET attempts = attempts + 1, last_error = $1, claimed_until = NULL,
     send_at = COALESCE($2::timestamptz, send_at),
     gave_up_at = CASE WHEN $2::timestamptz IS NULL THEN $3::timestamptz ELSE NULL END
 WHERE id = $4

@@ -86,6 +86,10 @@ type Notification struct {
 	LastError         string
 	TelegramMessageID *int64
 	CreatedAt         time.Time
+	PlanStart         *time.Time
+	PlanEnd           *time.Time
+	ForDate           *time.Time
+	ClaimedUntil      *time.Time
 }
 
 type ReminderRule struct {

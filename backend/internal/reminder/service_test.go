@@ -843,3 +843,180 @@ func TestTheHabitButton(t *testing.T) {
 		t.Errorf("other user: %+v", res)
 	}
 }
+
+func (e *env) move(in task.Instance, start, end time.Time) {
+	e.t.Helper()
+	if _, err := e.tasks.Update(context.Background(), e.user, in.ID, task.ScopeThis, task.UpdateInput{PlannedStart: &start, PlannedEnd: &end}); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestAMessageForAPlanThatChangedIsNotSent(t *testing.T) {
+	e := newEnv(t)
+	in := e.task(e.user, "Планёрка", at(14, 10, 5), at(14, 11, 0))
+	e.setNow(at(14, 9, 55))
+	e.plan() // "10 minutes before" for 10:05 is due at 9:55
+	if n := len(e.rows(e.user)); n != 1 {
+		t.Fatalf("queued = %d", n)
+	}
+	e.setNow(at(14, 9, 56))
+	e.move(in, at(14, 15, 0), at(14, 16, 0))
+	e.setNow(at(14, 9, 57))
+	if got := e.send(); len(got) != 0 {
+		t.Errorf("a reminder for the old time was sent: %+v", got)
+	}
+}
+
+func TestMovingTheEndGivesANewReminderAfterTheEnd(t *testing.T) {
+	e := newEnv(t)
+	in := e.task(e.user, "Планёрка", at(14, 10, 0), at(14, 11, 0))
+	e.setNow(at(14, 11, 0))
+	e.plan()
+	if got := e.send(); len(got) != 1 || !strings.Contains(got[0].msg.Text, "закончилось в 11:00") {
+		t.Fatalf("first: %+v", got)
+	}
+	// It ran over and the user fixes the end: the request to mark it comes again at the new end.
+	e.move(in, at(14, 10, 0), at(14, 12, 0))
+	e.setNow(at(14, 12, 0))
+	e.plan()
+	got := e.send()
+	if len(got) != 1 || !strings.Contains(got[0].msg.Text, "закончилось в 12:00") {
+		t.Errorf("second: %+v", got)
+	}
+}
+
+func TestACutSeriesKeepsItsReminders(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	rule := "FREQ=DAILY"
+	if _, err := e.tasks.Create(ctx, e.user, task.CreateInput{Title: "Зарядка", PlannedStart: at(12, 8, 0), PlannedEnd: at(12, 8, 30), Recurrence: &rule}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.tasks.List(ctx, e.user, at(12, 0, 0), at(18, 0, 0))
+	if err != nil || len(list) < 4 {
+		t.Fatalf("setup: %v %v", list, err)
+	}
+	if err := e.svc.Put(ctx, e.user, reminder.ScopeSeries, *list[0].SeriesID, reminder.Setting{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	// "This and the following" from the 15th gets a new series.
+	title := "Новая зарядка"
+	if _, err := e.tasks.Update(ctx, e.user, list[3].ID, task.ScopeFollowing, task.UpdateInput{Title: &title}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = e.tasks.List(ctx, e.user, at(12, 0, 0), at(18, 0, 0))
+	var tail, head task.Instance
+	for _, in := range list {
+		if in.Title == title {
+			tail = in
+		} else {
+			head = in
+		}
+	}
+	if tail.SeriesID == nil || head.SeriesID == nil || *tail.SeriesID == *head.SeriesID {
+		t.Fatalf("the series was not cut: %+v %+v", head, tail)
+	}
+	got, err := e.svc.Effective(ctx, e.user, reminder.ScopeInstance, tail.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != reminder.ScopeSeries || len(got.Rules) != 0 {
+		t.Errorf("the tail lost the settings of the series: %+v", got)
+	}
+}
+
+func TestARescheduledTaskKeepsItsReminders(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	in := e.task(e.user, "Планёрка", at(14, 10, 0), at(14, 11, 0))
+	if err := e.svc.Put(ctx, e.user, reminder.ScopeInstance, in.ID, set(before60)); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := e.tasks.Reschedule(ctx, e.user, in.ID, at(15, 10, 0), at(15, 11, 0), "совещание")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.svc.Effective(ctx, e.user, reminder.ScopeInstance, moved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != reminder.ScopeInstance || len(got.Rules) != 1 || got.Rules[0] != before60 {
+		t.Errorf("effective = %+v", got)
+	}
+}
+
+func TestTwoSendersDoNotTakeTheSameMessage(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.task(e.user, "Планёрка", at(14, 10, 0), at(14, 11, 0))
+	e.plan()
+	e.setNow(at(14, 9, 51))
+	claim := func() int {
+		rows, err := e.st.ClaimDueNotifications(ctx, store.ClaimDueNotificationsParams{
+			Now: e.clock, LeaseUntil: e.clock.Add(2 * time.Minute), Batch: 50,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	if n := claim(); n != 1 {
+		t.Fatalf("first sender got %d", n)
+	}
+	if n := claim(); n != 0 {
+		t.Errorf("second sender got %d of the message that the first holds", n)
+	}
+	// The lease ends: the message can be taken again (the first sender died).
+	e.setNow(e.clock.Add(3 * time.Minute))
+	if n := claim(); n != 1 {
+		t.Errorf("after the lease: %d", n)
+	}
+}
+
+func TestAMessageThatCannotBeBuiltIsRetriedLaterNotForever(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.task(e.user, "Планёрка", at(14, 10, 0), at(14, 11, 0))
+	e.plan()
+	// Something is wrong with the user's data, not with Telegram.
+	if _, err := e.pool.Exec(ctx, `UPDATE users SET timezone = 'Nowhere/Land' WHERE id = $1`, e.user); err != nil {
+		t.Fatal(err)
+	}
+	e.setNow(at(14, 9, 51))
+	e.send() // must return, and count the try
+	e.send()
+	var attempts int
+	var pushed bool
+	if err := e.pool.QueryRow(ctx,
+		`SELECT attempts, send_at > $2 FROM notifications WHERE user_id = $1`, e.user, e.clock).Scan(&attempts, &pushed); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || !pushed {
+		t.Errorf("attempts = %d, pushed later = %v, want 1 and true", attempts, pushed)
+	}
+	if len(e.sender.sent) != 0 {
+		t.Errorf("sent: %+v", e.sender.sent)
+	}
+}
+
+func TestAHabitReminderHeldBackPastMidnightIsDropped(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if err := e.svc.SetGlobal(ctx, e.user, reminder.Global{Enabled: true, Quiet: &reminder.Quiet{Start: 22 * 60, End: 8 * 60}}); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := e.habits.Create(ctx, e.user, habit.Input{Title: "Читать", Kind: habit.Boolean, Color: "#06b6d4", Schedule: habit.Schedule{Frequency: habit.Daily}})
+	if err := e.svc.Put(ctx, e.user, reminder.ScopeHabit, h.ID, set(reminder.Rule{Kind: reminder.HabitTime, TimeOfDay: 23*60 + 30})); err != nil {
+		t.Fatal(err)
+	}
+	e.setNow(at(14, 23, 28))
+	e.plan() // due at 23:30 on the 14th, inside the quiet hours: held back to 08:00 on the 15th
+	e.setNow(at(14, 23, 40))
+	if got := e.send(); len(got) != 0 {
+		t.Fatalf("sent in the quiet hours: %+v", got)
+	}
+	e.setNow(at(15, 8, 1))
+	if got := e.send(); len(got) != 0 {
+		t.Errorf("a reminder for yesterday was sent: %+v", got)
+	}
+}

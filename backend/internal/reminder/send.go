@@ -27,28 +27,45 @@ type Sender interface {
 const (
 	maxAttempts = 5
 	batchSize   = 50
+	// maxBatches bounds one pass of the sender, so that it cannot spin.
+	maxBatches = 20
+	// lease is how long a message is reserved for the sender that took it.
+	lease = 2 * time.Minute
 )
 
 // retryDelays are the pauses after the first, second … failed try.
 var retryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute, 30 * time.Minute}
 
+// today is what the habits of a user look like today; it is worked out once per pass.
+type today struct {
+	items []habit.TodayItem
+	day   habit.Day
+}
+
 // SendDue sends the queued messages whose time has come.
 func (s *Service) SendDue(ctx context.Context) error {
-	for {
+	habits := map[uuid.UUID]today{}
+	for range maxBatches {
 		now := s.now()
-		due, err := s.store.ClaimDueNotifications(ctx, store.ClaimDueNotificationsParams{Now: now, Batch: batchSize})
+		due, err := s.store.ClaimDueNotifications(ctx, store.ClaimDueNotificationsParams{
+			Now: now, LeaseUntil: now.Add(lease), Batch: batchSize,
+		})
 		if err != nil {
 			return fmt.Errorf("claim due notifications: %w", err)
 		}
 		for _, n := range due {
-			if err := s.sendOne(ctx, n, now); err != nil {
+			if err := s.sendOne(ctx, n, now, habits); err != nil {
+				// Not Telegram's fault (the database, a bad time zone): try again later, a few times,
+				// like any other failure, so that a broken message cannot be picked up for ever.
 				s.log.ErrorContext(ctx, "send notification", "id", n.ID, "err", err)
+				s.fail(ctx, n, now, err)
 			}
 		}
 		if len(due) < batchSize {
 			return nil
 		}
 	}
+	return nil
 }
 
 // skip marks a message as no longer needed.
@@ -56,7 +73,7 @@ func (s *Service) skip(ctx context.Context, n store.Notification, now time.Time,
 	return s.store.MarkNotificationSkipped(ctx, store.MarkNotificationSkippedParams{ID: n.ID, Now: &now, Reason: reason})
 }
 
-func (s *Service) sendOne(ctx context.Context, n store.Notification, now time.Time) error {
+func (s *Service) sendOne(ctx context.Context, n store.Notification, now time.Time, habits map[uuid.UUID]today) error {
 	u, err := s.store.GetUser(ctx, n.UserID)
 	if err != nil {
 		return fmt.Errorf("get user: %w", err)
@@ -67,17 +84,17 @@ func (s *Service) sendOne(ctx context.Context, n store.Notification, now time.Ti
 	}
 
 	var msg Message
-	var ok bool
+	var reason string
 	if n.InstanceID.Valid {
-		msg, ok, err = s.taskMessage(ctx, n, now, loc)
+		msg, reason, err = s.taskMessage(ctx, n, now, loc)
 	} else {
-		msg, ok, err = s.habitMessage(ctx, n)
+		msg, reason, err = s.habitMessage(ctx, n, habits)
 	}
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return s.skip(ctx, n, now, "not needed any more")
+	if reason != "" {
+		return s.skip(ctx, n, now, reason)
 	}
 
 	chatID, err := s.chatID(ctx, n.UserID)
@@ -95,25 +112,31 @@ func (s *Service) sendOne(ctx context.Context, n store.Notification, now time.Ti
 	case errors.Is(err, ErrUndeliverable):
 		return s.giveUp(ctx, n, now, err.Error())
 	}
+	s.fail(ctx, n, now, err)
+	return nil
+}
 
-	// Another failure: try again later, a few times.
+// fail records a failed try: the next one comes after a pause, or the message is given up
+// after maxAttempts. The pause does not end in quiet hours.
+func (s *Service) fail(ctx context.Context, n store.Notification, now time.Time, cause error) {
 	var retryAt *time.Time
 	if int(n.Attempts)+1 < maxAttempts {
-		delay := retryDelays[min(int(n.Attempts), len(retryDelays)-1)]
-		g, qerr := s.store.GetGlobalReminderSettings(ctx, n.UserID)
-		var quiet *Quiet
-		if qerr == nil && g.QuietStart != nil && g.QuietEnd != nil {
-			quiet = &Quiet{Start: int(*g.QuietStart), End: int(*g.QuietEnd)}
+		at := now.Add(retryDelays[min(int(n.Attempts), len(retryDelays)-1)])
+		if u, err := s.store.GetUser(ctx, n.UserID); err == nil {
+			if loc, err := time.LoadLocation(u.Timezone); err == nil {
+				if g, err := s.store.GetGlobalReminderSettings(ctx, n.UserID); err == nil && g.QuietStart != nil && g.QuietEnd != nil {
+					at = (&Quiet{Start: int(*g.QuietStart), End: int(*g.QuietEnd)}).Shift(at, loc)
+				}
+			}
 		}
-		at := quiet.Shift(now.Add(delay), loc)
 		retryAt = &at
 	}
-	if mErr := s.store.MarkNotificationFailed(ctx, store.MarkNotificationFailedParams{
-		ID: n.ID, LastError: err.Error(), RetryAt: retryAt, Now: now,
-	}); mErr != nil {
-		return fmt.Errorf("mark failed: %w", mErr)
+	err := s.store.MarkNotificationFailed(ctx, store.MarkNotificationFailedParams{
+		ID: n.ID, LastError: cause.Error(), RetryAt: retryAt, Now: now,
+	})
+	if err != nil {
+		s.log.ErrorContext(ctx, "mark notification failed", "id", n.ID, "err", err)
 	}
-	return fmt.Errorf("send: %w", err)
 }
 
 func (s *Service) giveUp(ctx context.Context, n store.Notification, now time.Time, reason string) error {
@@ -132,33 +155,51 @@ func (s *Service) chatID(ctx context.Context, userID uuid.UUID) (int64, error) {
 	return chat, nil
 }
 
-func (s *Service) taskMessage(ctx context.Context, n store.Notification, now time.Time, loc *time.Location) (Message, bool, error) {
+// taskMessage builds the message of a task reminder; a non-empty reason means it is not needed.
+func (s *Service) taskMessage(ctx context.Context, n store.Notification, now time.Time, loc *time.Location) (Message, string, error) {
 	in, err := s.tasks.Get(ctx, n.UserID, n.InstanceID.UUID)
 	if errors.Is(err, task.ErrNotFound) {
-		return Message{}, false, nil
+		return Message{}, "the task is gone", nil
 	}
 	if err != nil {
-		return Message{}, false, err
+		return Message{}, "", err
 	}
-	if in.PlannedStart == nil || in.PlannedEnd == nil || !Needed(Kind(n.Kind), in.Status, *in.PlannedEnd, now) {
-		return Message{}, false, nil
+	if in.PlannedStart == nil || in.PlannedEnd == nil {
+		return Message{}, "the task has no plan", nil
 	}
-	return TaskMessage(Kind(n.Kind), in.ID, in.Title, *in.PlannedStart, *in.PlannedEnd, now, loc), true, nil
+	// The message was made for a plan; a task that was moved since gets reminders of its own.
+	if n.PlanStart != nil && n.PlanEnd != nil && (!in.PlannedStart.Equal(*n.PlanStart) || !in.PlannedEnd.Equal(*n.PlanEnd)) {
+		return Message{}, "the plan changed", nil
+	}
+	if !Needed(Kind(n.Kind), in.Status, *in.PlannedEnd, now) {
+		return Message{}, "not needed any more", nil
+	}
+	return TaskMessage(Kind(n.Kind), in.ID, in.Title, *in.PlannedStart, *in.PlannedEnd, now, loc), "", nil
 }
 
-func (s *Service) habitMessage(ctx context.Context, n store.Notification) (Message, bool, error) {
-	items, _, err := s.habits.Today(ctx, n.UserID)
-	if err != nil {
-		return Message{}, false, err
+// habitMessage builds the message of a habit reminder; a non-empty reason means it is not needed.
+func (s *Service) habitMessage(ctx context.Context, n store.Notification, cache map[uuid.UUID]today) (Message, string, error) {
+	t, ok := cache[n.UserID]
+	if !ok {
+		items, day, err := s.habits.Today(ctx, n.UserID)
+		if err != nil {
+			return Message{}, "", err
+		}
+		t = today{items, day}
+		cache[n.UserID] = t
 	}
-	for _, it := range items {
+	// A reminder is for a day; one that was held back past midnight by quiet hours is over.
+	if n.ForDate != nil && !habit.DayOf(n.ForDate.Year(), n.ForDate.Month(), n.ForDate.Day()).Equal(t.day) {
+		return Message{}, "the day is over", nil
+	}
+	for _, it := range t.items {
 		if it.Habit.ID != n.HabitID.UUID {
 			continue
 		}
 		h := it.Habit
 		// Planned today and not done yet; a weekly goal also stops once it is reached.
 		if it.Done || (h.Schedule.Weekly() && it.WeekDone >= h.Schedule.TimesPerWeek) {
-			return Message{}, false, nil
+			return Message{}, "not needed any more", nil
 		}
 		progress := ""
 		if h.Kind == habit.Quantity {
@@ -167,9 +208,9 @@ func (s *Service) habitMessage(ctx context.Context, n store.Notification) (Messa
 				progress += " " + h.Unit
 			}
 		}
-		return HabitMessage(h.ID, h.Title, h.Kind == habit.Boolean, progress), true, nil
+		return HabitMessage(h.ID, h.Title, h.Kind == habit.Boolean, progress), "", nil
 	}
-	return Message{}, false, nil
+	return Message{}, "not planned today", nil
 }
 
 // CallbackResult is what the bot shows after a button was pressed.

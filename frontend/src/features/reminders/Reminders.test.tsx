@@ -347,6 +347,19 @@ describe('the reminders of a level', () => {
     })
   })
 
+  it('opens a habit that was switched off through the API as "do not remind", not as an empty form', async () => {
+    levels['habit/x1'] = {
+      override: { enabled: false, rules: [] },
+      effective: { source: 'habit', rules: [] },
+    }
+    open('habit')
+    const dialog = await screen.findByRole('dialog')
+    const none = (await within(dialog).findByRole('radio', {
+      name: 'Не напоминать',
+    })) as HTMLInputElement
+    expect(none.checked).toBe(true)
+  })
+
   it('shows an error from the server and stays open', async () => {
     net.handler = (req) =>
       req.method === 'PUT' && req.path.startsWith('/reminders/category')

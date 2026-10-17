@@ -43,9 +43,11 @@ export function ReminderDialog({ scope, id, subject, onClose }: ReminderDialogPr
   )
 }
 
-function modeOf(level: ReminderLevel): Mode {
+function modeOf(level: ReminderLevel, habit: boolean): Mode {
   if (level.override === null) return 'inherit'
-  return level.override.enabled ? 'custom' : 'off'
+  if (level.override.enabled) return 'custom'
+  // A habit has no "off": no reminders is what it has by default.
+  return habit ? 'inherit' : 'off'
 }
 
 function LevelForm({
@@ -62,7 +64,7 @@ function LevelForm({
   const platform = usePlatform()
   const set = useSetReminders()
   const remove = useDeleteReminders()
-  const [mode, setMode] = useState<Mode>(() => modeOf(level))
+  const [mode, setMode] = useState<Mode>(() => modeOf(level, scope === 'habit'))
   // A new set of its own starts from what applies now: a change is easier than a blank page.
   const [drafts, setDrafts] = useState<RuleDraft[]>(() =>
     (level.override?.enabled ? level.override.rules : level.effective.rules).map(draftFromRule),

@@ -456,6 +456,12 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	if err := setSeriesCategories(ctx, q, userID, created.ID, newCategories); err != nil {
 		return err
 	}
+	// The tail is the same regular task: its reminders stay as they were set for the series.
+	if err := q.CopySeriesReminders(ctx, store.CopySeriesRemindersParams{
+		OldSeriesID: uuid.NullUUID{UUID: row.ID, Valid: true}, NewSeriesID: uuid.NullUUID{UUID: created.ID, Valid: true}, UserID: userID,
+	}); err != nil {
+		return fmt.Errorf("copy series reminders: %w", err)
+	}
 	if err := deleteRewritable(ctx, q, userID, row.ID, false, false, &at); err != nil {
 		return err
 	}

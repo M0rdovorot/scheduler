@@ -71,8 +71,9 @@ WHERE d.user_id = @user_id AND d.status IN ('planned', 'in_progress')
 ORDER BY d.planned_start, d.id;
 
 -- name: InsertNotification :exec
-INSERT INTO notifications (user_id, instance_id, habit_id, kind, dedupe_key, send_at)
-VALUES (@user_id, sqlc.narg('instance_id'), sqlc.narg('habit_id'), @kind, @dedupe_key, @send_at)
+INSERT INTO notifications (user_id, instance_id, habit_id, kind, dedupe_key, send_at, plan_start, plan_end, for_date)
+VALUES (@user_id, sqlc.narg('instance_id'), sqlc.narg('habit_id'), @kind, @dedupe_key, @send_at,
+        sqlc.narg('plan_start'), sqlc.narg('plan_end'), sqlc.narg('for_date'))
 ON CONFLICT (dedupe_key) DO NOTHING;
 
 -- name: DeletePendingNotifications :exec
@@ -80,12 +81,20 @@ ON CONFLICT (dedupe_key) DO NOTHING;
 DELETE FROM notifications WHERE user_id = $1 AND sent_at IS NULL AND gave_up_at IS NULL;
 
 -- name: ClaimDueNotifications :many
--- Pending messages whose time has come. SKIP LOCKED lets two senders share the queue.
-SELECT * FROM notifications
-WHERE sent_at IS NULL AND gave_up_at IS NULL AND send_at <= @now
-ORDER BY send_at, id
-LIMIT @batch
-FOR UPDATE SKIP LOCKED;
+-- Pending messages whose time has come, leased to the caller until lease_until: another sender
+-- (a second instance during a deploy) skips them, and so does the next pass if this one fails
+-- before it marks them.
+UPDATE notifications
+SET claimed_until = @lease_until::timestamptz
+WHERE id IN (
+    SELECT n.id FROM notifications n
+    WHERE n.sent_at IS NULL AND n.gave_up_at IS NULL AND n.send_at <= @now::timestamptz
+      AND (n.claimed_until IS NULL OR n.claimed_until <= @now::timestamptz)
+    ORDER BY n.send_at, n.id
+    LIMIT @batch
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING *;
 
 -- name: MarkNotificationSent :exec
 UPDATE notifications SET sent_at = @now, telegram_message_id = sqlc.narg('telegram_message_id'), attempts = attempts + 1, last_error = ''
@@ -94,7 +103,7 @@ WHERE id = @id;
 -- name: MarkNotificationFailed :exec
 -- A failed try: try again at retry_at, or give up when it is NULL.
 UPDATE notifications
-SET attempts = attempts + 1, last_error = @last_error,
+SET attempts = attempts + 1, last_error = @last_error, claimed_until = NULL,
     send_at = COALESCE(sqlc.narg('retry_at')::timestamptz, send_at),
     gave_up_at = CASE WHEN sqlc.narg('retry_at')::timestamptz IS NULL THEN @now::timestamptz ELSE NULL END
 WHERE id = @id;
@@ -102,3 +111,31 @@ WHERE id = @id;
 -- name: MarkNotificationSkipped :exec
 -- The message is not needed any more (the task was marked meanwhile): it counts as dealt with.
 UPDATE notifications SET gave_up_at = @now, last_error = @reason WHERE id = @id;
+
+-- name: CopySeriesReminders :exec
+-- A series that was cut in two: the tail keeps the reminder settings of the series.
+WITH src AS (
+    SELECT rs.id, rs.enabled FROM reminder_settings rs
+    WHERE rs.scope = 'series' AND rs.series_id = @old_series_id AND rs.user_id = @user_id
+), ins AS (
+    INSERT INTO reminder_settings (user_id, scope, series_id, enabled)
+    SELECT @user_id, 'series', @new_series_id, enabled FROM src
+    RETURNING id
+)
+INSERT INTO reminder_rules (setting_id, kind, offset_minutes, time_of_day)
+SELECT (SELECT id FROM ins), r.kind, r.offset_minutes, r.time_of_day
+FROM reminder_rules r JOIN src ON r.setting_id = src.id;
+
+-- name: CopyInstanceReminders :exec
+-- A task that was rescheduled: the new one keeps the reminder settings of the original.
+WITH src AS (
+    SELECT rs.id, rs.enabled FROM reminder_settings rs
+    WHERE rs.scope = 'instance' AND rs.instance_id = @from_id AND rs.user_id = @user_id
+), ins AS (
+    INSERT INTO reminder_settings (user_id, scope, instance_id, enabled)
+    SELECT @user_id, 'instance', @to_id, enabled FROM src
+    RETURNING id
+)
+INSERT INTO reminder_rules (setting_id, kind, offset_minutes, time_of_day)
+SELECT (SELECT id FROM ins), r.kind, r.offset_minutes, r.time_of_day
+FROM reminder_rules r JOIN src ON r.setting_id = src.id;

@@ -299,6 +299,11 @@ func (s *Service) Reschedule(ctx context.Context, userID, id uuid.UUID, start, e
 		if err := q.CopyInstanceCategories(ctx, store.CopyInstanceCategoriesParams{ToID: newID, FromID: cur.ID, UserID: userID}); err != nil {
 			return fmt.Errorf("copy categories: %w", err)
 		}
+		if err := q.CopyInstanceReminders(ctx, store.CopyInstanceRemindersParams{
+			ToID: uuid.NullUUID{UUID: newID, Valid: true}, FromID: uuid.NullUUID{UUID: cur.ID, Valid: true}, UserID: userID,
+		}); err != nil {
+			return fmt.Errorf("copy reminders: %w", err)
+		}
 		reason := comment
 		if reason == "" {
 			reason = cur.Comment
