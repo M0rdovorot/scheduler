@@ -31,3 +31,6 @@
 		file_server
 	}
 }
+
+# Sites of other projects that share this entrance (one Caddy owns ports 80 and 443).
+import /etc/caddy/sites/*.caddy

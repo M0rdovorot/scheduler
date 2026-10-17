@@ -1,0 +1,6 @@
+# Another project on this server (diary) shares the entrance: its bot serves its Mini App on the
+# loopback, and this Caddy gives it TLS under its own name. It is not part of the scheduler.
+72-56-242-50.sslip.io {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
