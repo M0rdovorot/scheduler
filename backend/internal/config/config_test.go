@@ -94,3 +94,41 @@ func TestLoadDevAuthRules(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadBotSettings(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "x", "BOT_TOKEN": "tok"}
+	with := func(kv ...string) func(string) string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for i := 0; i < len(kv); i += 2 {
+			m[kv[i]] = kv[i+1]
+		}
+		return env(m)
+	}
+
+	cfg, err := Load(with())
+	if err != nil || cfg.BotEnabled || cfg.WebAppURL != "" {
+		t.Fatalf("defaults: %+v, %v", cfg, err)
+	}
+	cfg, err = Load(with("BOT_ENABLED", "true", "WEBAPP_URL", " https://plan.example/ "))
+	if err != nil || !cfg.BotEnabled || cfg.WebAppURL != "https://plan.example/" {
+		t.Fatalf("enabled: %+v, %v", cfg, err)
+	}
+	for name, kv := range map[string][]string{
+		"bad bool":        {"BOT_ENABLED", "maybe"},
+		"plain http":      {"WEBAPP_URL", "http://plan.example/"},
+		"not an address":  {"WEBAPP_URL", "plan.example"},
+		"enabled, no key": {"BOT_ENABLED", "true", "BOT_TOKEN", ""},
+	} {
+		in := with(kv...)
+		if name == "enabled, no key" {
+			// A dev login does not need the token, the bot does.
+			in = env(map[string]string{"DATABASE_URL": "x", "APP_ENV": "dev", "DEV_AUTH": "true", "BOT_ENABLED": "true"})
+		}
+		if _, err := Load(in); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

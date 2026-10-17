@@ -103,6 +103,9 @@ type Service struct {
 
 func NewService(s *store.Store) *Service { return &Service{store: s, now: time.Now} }
 
+// SetClock replaces the clock of the service; tests of services that use habits fix the time with it.
+func (s *Service) SetClock(now func() time.Time) { s.now = now }
+
 func (s *Service) location(ctx context.Context, q *store.Queries, userID uuid.UUID) (*time.Location, error) {
 	u, err := q.GetUser(ctx, userID)
 	if err != nil {
@@ -649,4 +652,18 @@ func (s *Service) Stats(ctx context.Context, userID, id uuid.UUID, from, to Day)
 	st.Percent30 = percent(today.AddDate(0, 0, -29))
 	st.Percent90 = percent(today.AddDate(0, 0, -89))
 	return st, nil
+}
+
+// MarkToday makes today a done day of a yes/no habit (a button in a bot message). For a
+// quantity it sets the goal.
+func (s *Service) MarkToday(ctx context.Context, userID, id uuid.UUID) error {
+	h, err := s.Get(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	loc, err := s.location(ctx, s.store.Queries, userID)
+	if err != nil {
+		return err
+	}
+	return s.SetMark(ctx, userID, id, LocalDay(s.now(), loc), h.Target)
 }

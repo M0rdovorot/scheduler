@@ -16,6 +16,7 @@ tags:
   - name: tracking
   - name: stats
   - name: habits
+  - name: reminders
 paths:
   /healthz:
     get:
@@ -866,6 +867,119 @@ paths:
                 $ref: "#/components/schemas/HabitStats"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /reminders/global:
+    get:
+      operationId: getGlobalReminders
+      summary: The master switch, the quiet hours and the default reminders
+      tags: [reminders]
+      responses:
+        "200":
+          description: Global settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalReminders"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      operationId: setGlobalReminders
+      summary: Replace the global reminder settings
+      description: |
+        With `enabled` false the bot writes nothing at all, whatever the other levels say.
+        Quiet hours are local to the user and may wrap midnight; messages that fall into them
+        are sent when they end.
+      tags: [reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GlobalReminders"
+      responses:
+        "200":
+          description: Saved settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalReminders"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /reminders/{scope}/{id}:
+    parameters:
+      - name: scope
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [category, series, instance, habit]
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getReminders
+      summary: Reminder settings of a category, a series, one occurrence or a habit
+      description: |
+        `override` is the level's own settings, or null when it inherits. `effective` says
+        which level's rules apply now (the first with settings of its own: occurrence, series,
+        categories, global; a habit has no inheritance) and what they are.
+      tags: [reminders]
+      responses:
+        "200":
+          description: The level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderLevel"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setReminders
+      summary: Give a level reminder settings of its own
+      description: |
+        Replaces what the level had. `enabled` false means no reminders on this level. A habit
+        takes only `habit_time` rules, the others only the four task kinds.
+      tags: [reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReminderOverride"
+      responses:
+        "200":
+          description: The level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderLevel"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteReminders
+      summary: Take the level's own settings away, so that it inherits again
+      tags: [reminders]
+      responses:
+        "200":
+          description: The level, now inheriting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderLevel"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1721,3 +1835,85 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/HabitDay"
+    ReminderRule:
+      type: object
+      required: [kind, offset_minutes, time_of_day]
+      properties:
+        kind:
+          type: string
+          enum: [before_start, after_end, not_started, overrun, habit_time]
+          description: |
+            before_start: N minutes before the planned start. after_end: N minutes after the planned
+            end, asking to mark the task. not_started: N minutes after the planned start if the task
+            is neither started nor marked. overrun: N minutes after the planned end if the timer
+            still runs. habit_time: a time of day, for a habit.
+        offset_minutes:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 10080
+          description: For the four task kinds; null for habit_time
+        time_of_day:
+          type: string
+          nullable: true
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: Local time, for habit_time; null for the others
+    QuietHours:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          example: "23:00"
+        end:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          example: "08:00"
+    GlobalReminders:
+      type: object
+      required: [enabled, quiet_hours, rules]
+      properties:
+        enabled:
+          type: boolean
+        quiet_hours:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/QuietHours"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReminderRule"
+    ReminderOverride:
+      type: object
+      required: [enabled, rules]
+      properties:
+        enabled:
+          type: boolean
+        rules:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/ReminderRule"
+    EffectiveReminders:
+      type: object
+      required: [source, rules]
+      properties:
+        source:
+          type: string
+          enum: [global, category, series, instance, habit]
+          description: The level whose rules apply
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReminderRule"
+    ReminderLevel:
+      type: object
+      required: [override, effective]
+      properties:
+        override:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ReminderOverride"
+        effective:
+          $ref: "#/components/schemas/EffectiveReminders"

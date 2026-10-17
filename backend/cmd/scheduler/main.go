@@ -18,6 +18,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/habit"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
+	"github.com/m0rdovorot/scheduler/backend/internal/reminder"
 	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/task"
@@ -60,6 +61,8 @@ func run() error {
 	users := user.NewService(st)
 	categories := category.NewService(st)
 	tasks := task.NewService(st)
+	habits := habit.NewService(st)
+	reminders := reminder.NewService(st, tasks, habits, nil, log)
 	api := httpapi.NewServer(httpapi.Deps{
 		DB: st,
 		Auth: auth.NewService(st, auth.Config{
@@ -72,8 +75,20 @@ func run() error {
 		Categories: categories,
 		Tasks:      tasks,
 		Stats:      stats.NewService(tasks, categories, users),
-		Habits:     habit.NewService(st),
+		Habits:     habits,
+		Reminders:  reminders,
 	})
+
+	if cfg.BotEnabled {
+		tg, err := reminder.NewBot(cfg.BotToken, cfg.WebAppURL, reminders, log)
+		if err != nil {
+			return fmt.Errorf("start bot: %w", err)
+		}
+		reminders.SetSender(tg)
+		go tg.Run(ctx)
+		go reminders.Run(ctx)
+		log.Info("bot and reminders started", "web_app", cfg.WebAppURL != "")
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

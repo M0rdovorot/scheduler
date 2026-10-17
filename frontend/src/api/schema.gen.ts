@@ -656,6 +656,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reminders/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The master switch, the quiet hours and the default reminders */
+        get: operations["getGlobalReminders"];
+        /**
+         * Replace the global reminder settings
+         * @description With `enabled` false the bot writes nothing at all, whatever the other levels say.
+         *     Quiet hours are local to the user and may wrap midnight; messages that fall into them
+         *     are sent when they end.
+         */
+        put: operations["setGlobalReminders"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{scope}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "category" | "series" | "instance" | "habit";
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Reminder settings of a category, a series, one occurrence or a habit
+         * @description `override` is the level's own settings, or null when it inherits. `effective` says
+         *     which level's rules apply now (the first with settings of its own: occurrence, series,
+         *     categories, global; a habit has no inheritance) and what they are.
+         */
+        get: operations["getReminders"];
+        /**
+         * Give a level reminder settings of its own
+         * @description Replaces what the level had. `enabled` false means no reminders on this level. A habit
+         *     takes only `habit_time` rules, the others only the four task kinds.
+         */
+        put: operations["setReminders"];
+        post?: never;
+        /** Take the level's own settings away, so that it inherits again */
+        delete: operations["deleteReminders"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1081,6 +1135,47 @@ export interface components {
             percent_30: number | null;
             percent_90: number | null;
             days: components["schemas"]["HabitDay"][];
+        };
+        ReminderRule: {
+            /**
+             * @description before_start: N minutes before the planned start. after_end: N minutes after the planned
+             *     end, asking to mark the task. not_started: N minutes after the planned start if the task
+             *     is neither started nor marked. overrun: N minutes after the planned end if the timer
+             *     still runs. habit_time: a time of day, for a habit.
+             * @enum {string}
+             */
+            kind: "before_start" | "after_end" | "not_started" | "overrun" | "habit_time";
+            /** @description For the four task kinds; null for habit_time */
+            offset_minutes: number | null;
+            /** @description Local time, for habit_time; null for the others */
+            time_of_day: string | null;
+        };
+        QuietHours: {
+            /** @example 23:00 */
+            start: string;
+            /** @example 08:00 */
+            end: string;
+        };
+        GlobalReminders: {
+            enabled: boolean;
+            quiet_hours: components["schemas"]["QuietHours"] | null;
+            rules: components["schemas"]["ReminderRule"][];
+        };
+        ReminderOverride: {
+            enabled: boolean;
+            rules: components["schemas"]["ReminderRule"][];
+        };
+        EffectiveReminders: {
+            /**
+             * @description The level whose rules apply
+             * @enum {string}
+             */
+            source: "global" | "category" | "series" | "instance" | "habit";
+            rules: components["schemas"]["ReminderRule"][];
+        };
+        ReminderLevel: {
+            override: components["schemas"]["ReminderOverride"] | null;
+            effective: components["schemas"]["EffectiveReminders"];
         };
     };
     responses: {
@@ -2077,6 +2172,133 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getGlobalReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Global settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalReminders"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setGlobalReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalReminders"];
+            };
+        };
+        responses: {
+            /** @description Saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalReminders"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "category" | "series" | "instance" | "habit";
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The level */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderLevel"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "category" | "series" | "instance" | "habit";
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderOverride"];
+            };
+        };
+        responses: {
+            /** @description The level */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderLevel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: "category" | "series" | "instance" | "habit";
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The level, now inheriting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderLevel"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

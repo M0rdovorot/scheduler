@@ -37,3 +37,7 @@ sql:
             nullable: true
             go_type:
               type: "*int16"
+          - db_type: pg_catalog.int8
+            nullable: true
+            go_type:
+              type: "*int64"

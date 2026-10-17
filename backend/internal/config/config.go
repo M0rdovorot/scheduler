@@ -30,6 +30,10 @@ type Config struct {
 	SessionTTL time.Duration
 	// InitDataMaxAge is how old Telegram init data may be.
 	InitDataMaxAge time.Duration
+	// BotEnabled starts the Telegram bot (long polling) and the reminders it sends.
+	BotEnabled bool
+	// WebAppURL is where the Mini App is served; the bot's "Open" buttons lead there.
+	WebAppURL string
 }
 
 // Load reads the configuration using getenv (usually os.Getenv).
@@ -39,6 +43,7 @@ func Load(getenv func(string) string) (Config, error) {
 		HTTPAddr:    withDefault(getenv("HTTP_ADDR"), "127.0.0.1:8081"),
 		DatabaseURL: getenv("DATABASE_URL"),
 		BotToken:    strings.TrimSpace(getenv("BOT_TOKEN")),
+		WebAppURL:   strings.TrimSpace(getenv("WEBAPP_URL")),
 	}
 
 	var errs []error
@@ -46,6 +51,9 @@ func Load(getenv func(string) string) (Config, error) {
 	var err error
 	if cfg.DevAuth, err = parseBool(getenv("DEV_AUTH")); err != nil {
 		errs = append(errs, fmt.Errorf("DEV_AUTH: %w", err))
+	}
+	if cfg.BotEnabled, err = parseBool(getenv("BOT_ENABLED")); err != nil {
+		errs = append(errs, fmt.Errorf("BOT_ENABLED: %w", err))
 	}
 	if cfg.SessionTTL, err = parseDuration(getenv("SESSION_TTL"), 30*24*time.Hour); err != nil {
 		errs = append(errs, fmt.Errorf("SESSION_TTL: %w", err))
@@ -62,6 +70,12 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if cfg.DevAuth && cfg.AppEnv != EnvDev {
 		errs = append(errs, errors.New("DEV_AUTH can be enabled only with APP_ENV=dev"))
+	}
+	if cfg.BotEnabled && cfg.BotToken == "" {
+		errs = append(errs, errors.New("BOT_TOKEN is required when BOT_ENABLED is on"))
+	}
+	if cfg.WebAppURL != "" && !strings.HasPrefix(cfg.WebAppURL, "https://") {
+		errs = append(errs, errors.New("WEBAPP_URL must be an https:// address: Telegram opens Mini Apps only over TLS"))
 	}
 	if cfg.BotToken == "" && !cfg.DevAuth {
 		errs = append(errs, errors.New("BOT_TOKEN is required unless DEV_AUTH is enabled"))

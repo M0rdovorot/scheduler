@@ -47,6 +47,33 @@ func (e DeviationKind) Valid() bool {
 	}
 }
 
+// Defines values for EffectiveRemindersSource.
+const (
+	EffectiveRemindersSourceCategory EffectiveRemindersSource = "category"
+	EffectiveRemindersSourceGlobal   EffectiveRemindersSource = "global"
+	EffectiveRemindersSourceHabit    EffectiveRemindersSource = "habit"
+	EffectiveRemindersSourceInstance EffectiveRemindersSource = "instance"
+	EffectiveRemindersSourceSeries   EffectiveRemindersSource = "series"
+)
+
+// Valid indicates whether the value is a known member of the EffectiveRemindersSource enum.
+func (e EffectiveRemindersSource) Valid() bool {
+	switch e {
+	case EffectiveRemindersSourceCategory:
+		return true
+	case EffectiveRemindersSourceGlobal:
+		return true
+	case EffectiveRemindersSourceHabit:
+		return true
+	case EffectiveRemindersSourceInstance:
+		return true
+	case EffectiveRemindersSourceSeries:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HabitFrequency.
 const (
 	HabitFrequencyDaily        HabitFrequency = "daily"
@@ -209,6 +236,33 @@ func (e InstanceStatus) Valid() bool {
 	case InstanceStatusPlanned:
 		return true
 	case InstanceStatusRescheduled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReminderRuleKind.
+const (
+	AfterEnd    ReminderRuleKind = "after_end"
+	BeforeStart ReminderRuleKind = "before_start"
+	HabitTime   ReminderRuleKind = "habit_time"
+	NotStarted  ReminderRuleKind = "not_started"
+	Overrun     ReminderRuleKind = "overrun"
+)
+
+// Valid indicates whether the value is a known member of the ReminderRuleKind enum.
+func (e ReminderRuleKind) Valid() bool {
+	switch e {
+	case AfterEnd:
+		return true
+	case BeforeStart:
+		return true
+	case HabitTime:
+		return true
+	case NotStarted:
+		return true
+	case Overrun:
 		return true
 	default:
 		return false
@@ -427,6 +481,17 @@ type Deviation struct {
 // DeviationKind defines model for DeviationKind.
 type DeviationKind string
 
+// EffectiveReminders defines model for EffectiveReminders.
+type EffectiveReminders struct {
+	Rules []ReminderRule `json:"rules"`
+
+	// Source The level whose rules apply
+	Source EffectiveRemindersSource `json:"source"`
+}
+
+// EffectiveRemindersSource The level whose rules apply
+type EffectiveRemindersSource string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Machine-readable error code
@@ -437,6 +502,13 @@ type Error struct {
 	// Field Name of the invalid request field, if any
 	Field   *string `json:"field,omitempty"`
 	Message string  `json:"message"`
+}
+
+// GlobalReminders defines model for GlobalReminders.
+type GlobalReminders struct {
+	Enabled    bool           `json:"enabled"`
+	QuietHours *QuietHours    `json:"quiet_hours"`
+	Rules      []ReminderRule `json:"rules"`
 }
 
 // Habit defines model for Habit.
@@ -655,6 +727,15 @@ type PlanVsFact struct {
 	Upcoming int `json:"upcoming"`
 }
 
+// QuietHours defines model for QuietHours.
+type QuietHours struct {
+	// End Example: 08:00
+	End string `json:"end"`
+
+	// Start Example: 23:00
+	Start string `json:"start"`
+}
+
 // Recurrence Repeat rule of a regular task. The first occurrence slot of a new task is its
 // `planned_start`–`planned_end`; times are repeated by the wall clock of the
 // user's time zone, also across daylight saving changes. Error codes:
@@ -668,6 +749,39 @@ type Recurrence struct {
 	// Example: FREQ=WEEKLY;BYDAY=MO,WE
 	Rrule string `json:"rrule"`
 }
+
+// ReminderLevel defines model for ReminderLevel.
+type ReminderLevel struct {
+	Effective EffectiveReminders `json:"effective"`
+	Override  *ReminderOverride  `json:"override"`
+}
+
+// ReminderOverride defines model for ReminderOverride.
+type ReminderOverride struct {
+	Enabled bool           `json:"enabled"`
+	Rules   []ReminderRule `json:"rules"`
+}
+
+// ReminderRule defines model for ReminderRule.
+type ReminderRule struct {
+	// Kind before_start: N minutes before the planned start. after_end: N minutes after the planned
+	// end, asking to mark the task. not_started: N minutes after the planned start if the task
+	// is neither started nor marked. overrun: N minutes after the planned end if the timer
+	// still runs. habit_time: a time of day, for a habit.
+	Kind ReminderRuleKind `json:"kind"`
+
+	// OffsetMinutes For the four task kinds; null for habit_time
+	OffsetMinutes *int `json:"offset_minutes"`
+
+	// TimeOfDay Local time, for habit_time; null for the others
+	TimeOfDay *string `json:"time_of_day"`
+}
+
+// ReminderRuleKind before_start: N minutes before the planned start. after_end: N minutes after the planned
+// end, asking to mark the task. not_started: N minutes after the planned start if the task
+// is neither started nor marked. overrun: N minutes after the planned end if the timer
+// still runs. habit_time: a time of day, for a habit.
+type ReminderRuleKind string
 
 // RescheduleRequest defines model for RescheduleRequest.
 type RescheduleRequest struct {
@@ -950,6 +1064,12 @@ type UpdateTrackingJSONRequestBody = TrackingPatch
 // UpdateMySettingsJSONRequestBody defines body for UpdateMySettings for application/json ContentType.
 type UpdateMySettingsJSONRequestBody = SettingsPatch
 
+// SetGlobalRemindersJSONRequestBody defines body for SetGlobalReminders for application/json ContentType.
+type SetGlobalRemindersJSONRequestBody = GlobalReminders
+
+// SetRemindersJSONRequestBody defines body for SetReminders for application/json ContentType.
+type SetRemindersJSONRequestBody = ReminderOverride
+
 // CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
 type CreateTaskJSONRequestBody = CreateTaskRequest
 
@@ -1057,6 +1177,21 @@ type ServerInterface interface {
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(w http.ResponseWriter, r *http.Request)
+	// GetGlobalReminders The master switch, the quiet hours and the default reminders
+	// (GET /reminders/global)
+	GetGlobalReminders(w http.ResponseWriter, r *http.Request)
+	// SetGlobalReminders Replace the global reminder settings
+	// (PUT /reminders/global)
+	SetGlobalReminders(w http.ResponseWriter, r *http.Request)
+	// DeleteReminders Take the level's own settings away, so that it inherits again
+	// (DELETE /reminders/{scope}/{id})
+	DeleteReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID)
+	// GetReminders Reminder settings of a category, a series, one occurrence or a habit
+	// (GET /reminders/{scope}/{id})
+	GetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID)
+	// SetReminders Give a level reminder settings of its own
+	// (PUT /reminders/{scope}/{id})
+	SetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID)
 	// GetSeries The template of a regular task
 	// (GET /series/{id})
 	GetSeries(w http.ResponseWriter, r *http.Request, id SeriesId)
@@ -1273,6 +1408,36 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMySettings Change settings; omitted fields stay as they are
 // (PATCH /me/settings)
 func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetGlobalReminders The master switch, the quiet hours and the default reminders
+// (GET /reminders/global)
+func (_ Unimplemented) GetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetGlobalReminders Replace the global reminder settings
+// (PUT /reminders/global)
+func (_ Unimplemented) SetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteReminders Take the level's own settings away, so that it inherits again
+// (DELETE /reminders/{scope}/{id})
+func (_ Unimplemented) DeleteReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetReminders Reminder settings of a category, a series, one occurrence or a habit
+// (GET /reminders/{scope}/{id})
+func (_ Unimplemented) GetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetReminders Give a level reminder settings of its own
+// (PUT /reminders/{scope}/{id})
+func (_ Unimplemented) SetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2133,6 +2298,139 @@ func (siw *ServerInterfaceWrapper) UpdateMySettings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetGlobalReminders operation middleware
+func (siw *ServerInterfaceWrapper) GetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGlobalReminders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetGlobalReminders operation middleware
+func (siw *ServerInterfaceWrapper) SetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetGlobalReminders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteReminders operation middleware
+func (siw *ServerInterfaceWrapper) DeleteReminders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "scope" -------------
+	var scope string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "scope", chi.URLParam(r, "scope"), &scope, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteReminders(w, r, scope, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReminders operation middleware
+func (siw *ServerInterfaceWrapper) GetReminders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "scope" -------------
+	var scope string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "scope", chi.URLParam(r, "scope"), &scope, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReminders(w, r, scope, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetReminders operation middleware
+func (siw *ServerInterfaceWrapper) SetReminders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "scope" -------------
+	var scope string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "scope", chi.URLParam(r, "scope"), &scope, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetReminders(w, r, scope, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSeries operation middleware
 func (siw *ServerInterfaceWrapper) GetSeries(w http.ResponseWriter, r *http.Request) {
 
@@ -2442,6 +2740,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/habits/{id}/stats", wrapper.GetHabitStats)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/reminders/global", wrapper.GetGlobalReminders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/reminders/global", wrapper.SetGlobalReminders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/reminders/{scope}/{id}", wrapper.DeleteReminders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/reminders/{scope}/{id}", wrapper.GetReminders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/reminders/{scope}/{id}", wrapper.SetReminders)
 	})
 
 	return r
@@ -4271,6 +4584,259 @@ func (response UpdateMySettings401JSONResponse) VisitUpdateMySettingsResponse(w 
 	return err
 }
 
+type GetGlobalRemindersRequestObject struct {
+}
+
+type GetGlobalRemindersResponseObject interface {
+	VisitGetGlobalRemindersResponse(w http.ResponseWriter) error
+}
+
+type GetGlobalReminders200JSONResponse GlobalReminders
+
+func (response GetGlobalReminders200JSONResponse) VisitGetGlobalRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalReminders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetGlobalReminders401JSONResponse) VisitGetGlobalRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetGlobalRemindersRequestObject struct {
+	Body *SetGlobalRemindersJSONRequestBody
+}
+
+type SetGlobalRemindersResponseObject interface {
+	VisitSetGlobalRemindersResponse(w http.ResponseWriter) error
+}
+
+type SetGlobalReminders200JSONResponse GlobalReminders
+
+func (response SetGlobalReminders200JSONResponse) VisitSetGlobalRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetGlobalReminders400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetGlobalReminders400JSONResponse) VisitSetGlobalRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetGlobalReminders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetGlobalReminders401JSONResponse) VisitSetGlobalRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRemindersRequestObject struct {
+	Scope string             `json:"scope"`
+	Id    openapi_types.UUID `json:"id"`
+}
+
+type DeleteRemindersResponseObject interface {
+	VisitDeleteRemindersResponse(w http.ResponseWriter) error
+}
+
+type DeleteReminders200JSONResponse ReminderLevel
+
+func (response DeleteReminders200JSONResponse) VisitDeleteRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteReminders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteReminders401JSONResponse) VisitDeleteRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteReminders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteReminders404JSONResponse) VisitDeleteRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRemindersRequestObject struct {
+	Scope string             `json:"scope"`
+	Id    openapi_types.UUID `json:"id"`
+}
+
+type GetRemindersResponseObject interface {
+	VisitGetRemindersResponse(w http.ResponseWriter) error
+}
+
+type GetReminders200JSONResponse ReminderLevel
+
+func (response GetReminders200JSONResponse) VisitGetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReminders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetReminders401JSONResponse) VisitGetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetReminders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetReminders404JSONResponse) VisitGetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetRemindersRequestObject struct {
+	Scope string             `json:"scope"`
+	Id    openapi_types.UUID `json:"id"`
+	Body  *SetRemindersJSONRequestBody
+}
+
+type SetRemindersResponseObject interface {
+	VisitSetRemindersResponse(w http.ResponseWriter) error
+}
+
+type SetReminders200JSONResponse ReminderLevel
+
+func (response SetReminders200JSONResponse) VisitSetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReminders400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetReminders400JSONResponse) VisitSetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReminders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetReminders401JSONResponse) VisitSetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetReminders404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetReminders404JSONResponse) VisitSetRemindersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSeriesRequestObject struct {
 	Id SeriesId `json:"id"`
 }
@@ -4525,6 +5091,21 @@ type StrictServerInterface interface {
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(ctx context.Context, request UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error)
+	// GetGlobalReminders The master switch, the quiet hours and the default reminders
+	// (GET /reminders/global)
+	GetGlobalReminders(ctx context.Context, request GetGlobalRemindersRequestObject) (GetGlobalRemindersResponseObject, error)
+	// SetGlobalReminders Replace the global reminder settings
+	// (PUT /reminders/global)
+	SetGlobalReminders(ctx context.Context, request SetGlobalRemindersRequestObject) (SetGlobalRemindersResponseObject, error)
+	// DeleteReminders Take the level's own settings away, so that it inherits again
+	// (DELETE /reminders/{scope}/{id})
+	DeleteReminders(ctx context.Context, request DeleteRemindersRequestObject) (DeleteRemindersResponseObject, error)
+	// GetReminders Reminder settings of a category, a series, one occurrence or a habit
+	// (GET /reminders/{scope}/{id})
+	GetReminders(ctx context.Context, request GetRemindersRequestObject) (GetRemindersResponseObject, error)
+	// SetReminders Give a level reminder settings of its own
+	// (PUT /reminders/{scope}/{id})
+	SetReminders(ctx context.Context, request SetRemindersRequestObject) (SetRemindersResponseObject, error)
 	// GetSeries The template of a regular task
 	// (GET /series/{id})
 	GetSeries(ctx context.Context, request GetSeriesRequestObject) (GetSeriesResponseObject, error)
@@ -5530,6 +6111,149 @@ func (sh *strictHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateMySettingsResponseObject); ok {
 		if err := validResponse.VisitUpdateMySettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGlobalReminders operation middleware
+func (sh *strictHandler) GetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+	var request GetGlobalRemindersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGlobalReminders(ctx, request.(GetGlobalRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGlobalReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGlobalRemindersResponseObject); ok {
+		if err := validResponse.VisitGetGlobalRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetGlobalReminders operation middleware
+func (sh *strictHandler) SetGlobalReminders(w http.ResponseWriter, r *http.Request) {
+	var request SetGlobalRemindersRequestObject
+
+	var body SetGlobalRemindersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetGlobalReminders(ctx, request.(SetGlobalRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetGlobalReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetGlobalRemindersResponseObject); ok {
+		if err := validResponse.VisitSetGlobalRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteReminders operation middleware
+func (sh *strictHandler) DeleteReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
+	var request DeleteRemindersRequestObject
+
+	request.Scope = scope
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteReminders(ctx, request.(DeleteRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRemindersResponseObject); ok {
+		if err := validResponse.VisitDeleteRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetReminders operation middleware
+func (sh *strictHandler) GetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
+	var request GetRemindersRequestObject
+
+	request.Scope = scope
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetReminders(ctx, request.(GetRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRemindersResponseObject); ok {
+		if err := validResponse.VisitGetRemindersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetReminders operation middleware
+func (sh *strictHandler) SetReminders(w http.ResponseWriter, r *http.Request, scope string, id openapi_types.UUID) {
+	var request SetRemindersRequestObject
+
+	request.Scope = scope
+	request.Id = id
+
+	var body SetRemindersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetReminders(ctx, request.(SetRemindersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetReminders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetRemindersResponseObject); ok {
+		if err := validResponse.VisitSetRemindersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -72,6 +72,45 @@ type InstanceDetail struct {
 	HabitID          uuid.NullUUID
 }
 
+type Notification struct {
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	InstanceID        uuid.NullUUID
+	HabitID           uuid.NullUUID
+	Kind              string
+	DedupeKey         string
+	SendAt            time.Time
+	SentAt            *time.Time
+	GaveUpAt          *time.Time
+	Attempts          int32
+	LastError         string
+	TelegramMessageID *int64
+	CreatedAt         time.Time
+}
+
+type ReminderRule struct {
+	ID            uuid.UUID
+	SettingID     uuid.UUID
+	Kind          string
+	OffsetMinutes *int32
+	TimeOfDay     *int16
+}
+
+type ReminderSetting struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Scope      string
+	CategoryID uuid.NullUUID
+	SeriesID   uuid.NullUUID
+	InstanceID uuid.NullUUID
+	HabitID    uuid.NullUUID
+	Enabled    bool
+	QuietStart *int16
+	QuietEnd   *int16
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type SeriesCategory struct {
 	SeriesID   uuid.UUID
 	CategoryID uuid.UUID

@@ -1,4 +1,4 @@
-package habit
+package reminder
 
 import "time"
 
