@@ -95,6 +95,25 @@ export function deviationText(d: Deviation): string {
   }
 }
 
+/** A deviation in a few words for a block of the grid: "начало +20 мин", "конец −10 мин". */
+export function deviationShort(d: Deviation): string {
+  const minutes = formatMinutes(d.minutes)
+  switch (d.kind) {
+    case 'started_late':
+      return `начало +${minutes}`
+    case 'started_early':
+      return `начало −${minutes}`
+    case 'finished_late':
+      return `конец +${minutes}`
+    case 'finished_early':
+      return `конец −${minutes}`
+    case 'took_longer':
+      return `дольше на ${minutes}`
+    case 'took_shorter':
+      return `короче на ${minutes}`
+  }
+}
+
 /** "20 мин", "1 ч 30 мин", "2 ч". */
 export function formatMinutes(total: number): string {
   const h = Math.floor(total / 60)

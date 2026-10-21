@@ -6,6 +6,11 @@ import { useMe } from '@/api/me'
 import { useNow } from '@/lib/useNow'
 import type { Category } from '@/api/types'
 import { UnplannedDialog } from '@/features/tracking/UnplannedDialog'
+import {
+  pastUnplanned,
+  unplannedForSelection,
+  type UnplannedDraft,
+} from '@/features/tracking/unplanned'
 import { effectiveMode } from './blocks'
 import { CalendarHeader } from './CalendarHeader'
 import { useCalendarStore } from './calendarStore'
@@ -49,7 +54,8 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
   const categories = useCategories()
   const running = useRunningInstances()
   const [target, setTarget] = useState<TaskFormTarget | null>(null)
-  const [unplannedOpen, setUnplannedOpen] = useState(false)
+  // A task outside the plan: from the menu, or in "fact" mode from the grid and the "+" button.
+  const [unplanned, setUnplanned] = useState<{ initial?: UnplannedDraft } | null>(null)
 
   const categoriesById = useMemo(
     () => new Map<string, Category>((categories.data ?? []).map((c) => [c.id, c])),
@@ -64,12 +70,18 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
 
   const closeForm = useCallback(() => setTarget(null), [])
 
-  const openSelection = (day: Day, range: SlotSelection) =>
+  const openSelection = (day: Day, range: SlotSelection) => {
+    // Where the grid shows what happened, what is added there is a fact.
+    if (mode === 'fact') {
+      setUnplanned({ initial: unplannedForSelection(day, range.startMin, range.endMin, now, tz) })
+      return
+    }
     setTarget({
       mode: 'create',
       compact: true,
       draft: draftForSelection(day, range.startMin, range.endMin),
     })
+  }
 
   return (
     <div className="flex h-screen-safe flex-col">
@@ -81,7 +93,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         onViewChange={setView}
         mode={mode}
         onModeChange={setMode}
-        onUnplanned={() => setUnplannedOpen(true)}
+        onUnplanned={() => setUnplanned({})}
         runningCount={running.data?.length ?? 0}
         onPrev={() => setAnchor(shiftAnchor(view, anchor, -1))}
         onNext={() => setAnchor(shiftAnchor(view, anchor, 1))}
@@ -117,14 +129,18 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
 
       <button
         type="button"
-        aria-label="Новое дело"
-        onClick={() =>
+        aria-label={mode === 'fact' ? 'Новое дело в факте' : 'Новое дело'}
+        onClick={() => {
+          if (mode === 'fact') {
+            setUnplanned({ initial: pastUnplanned(now, tz) })
+            return
+          }
           setTarget({
             mode: 'create',
             compact: false,
             draft: draftStartingNow(new Date(), today, slot, tz),
           })
-        }
+        }}
         className="fixed bottom-[max(1rem,var(--safe-bottom))] right-4 z-20 size-14 rounded-full bg-accent text-3xl leading-none text-accent-fg shadow-lg"
       >
         +
@@ -145,13 +161,14 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
         />
       )}
 
-      {unplannedOpen && (
+      {unplanned && (
         <UnplannedDialog
           categories={categories.data ?? []}
           tz={tz}
           now={now}
-          onDone={() => setUnplannedOpen(false)}
-          onCancel={() => setUnplannedOpen(false)}
+          initial={unplanned.initial}
+          onDone={() => setUnplanned(null)}
+          onCancel={() => setUnplanned(null)}
         />
       )}
     </div>

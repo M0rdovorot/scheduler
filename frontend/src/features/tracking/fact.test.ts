@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Instance } from '@/api/types'
 import {
   actionsFor,
+  deviationShort,
   deviationText,
   factInterval,
   formatElapsed,
@@ -196,5 +197,18 @@ describe('formatElapsed / isTooLong', () => {
     const start = new Date('2026-10-14T00:00:00Z')
     expect(isTooLong(start, new Date('2026-10-14T12:00:00Z'))).toBe(false) // exactly the cap
     expect(isTooLong(start, new Date('2026-10-14T12:00:01Z'))).toBe(true)
+  })
+})
+
+describe('deviationShort', () => {
+  it.each([
+    [{ kind: 'started_late', minutes: 20 }, 'начало +20 мин'],
+    [{ kind: 'started_early', minutes: 5 }, 'начало −5 мин'],
+    [{ kind: 'finished_late', minutes: 90 }, 'конец +1 ч 30 мин'],
+    [{ kind: 'finished_early', minutes: 10 }, 'конец −10 мин'],
+    [{ kind: 'took_longer', minutes: 15 }, 'дольше на 15 мин'],
+    [{ kind: 'took_shorter', minutes: 15 }, 'короче на 15 мин'],
+  ] as const)('%j → %s', (deviation, want) => {
+    expect(deviationShort(deviation)).toBe(want)
   })
 })

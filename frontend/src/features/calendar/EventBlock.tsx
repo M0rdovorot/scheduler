@@ -1,6 +1,7 @@
 import type { Instance } from '@/api/types'
 import { statusLabels, statusMarks } from '@/features/tracking/fact'
 import type { Block } from './blocks'
+import { linesThatFit } from './blockLines'
 import { formatMinutes } from './grid'
 
 interface EventBlockProps {
@@ -13,8 +14,10 @@ interface EventBlockProps {
   columns: number
   /** The task is planned, its time is over and nobody marked it (FR-5.9). */
   unmarked: boolean
-  /** Many narrow columns (week view): the title wraps and the time line is left out. */
+  /** Many narrow columns (week view): the title wraps and the lines under it are left out. */
   dense: boolean
+  /** The lines under the title, most important first; only those that fit are drawn. */
+  details: readonly string[]
   onOpen: (instance: Instance) => void
 }
 
@@ -31,6 +34,7 @@ export function EventBlock({
   columns,
   unmarked,
   dense,
+  details,
   onOpen,
 }: EventBlockProps) {
   const { instance, kind, seg, stripe } = block
@@ -48,7 +52,8 @@ export function EventBlock({
     .filter(Boolean)
     .join(', ')
 
-  const tint = `color-mix(in srgb, ${color} 28%, var(--app-bg))`
+  // What happened is drawn denser than what was planned, so that the two read differently.
+  const tint = `color-mix(in srgb, ${color} ${kind === 'plan' ? 28 : 48}%, var(--app-bg))`
   return (
     <button
       type="button"
@@ -103,7 +108,11 @@ export function EventBlock({
         )}
         {instance.title}
       </span>
-      {!dense && height >= 40 && <span className="block truncate text-hint">{time}</span>}
+      {details.slice(0, linesThatFit(height, dense)).map((line, i) => (
+        <span key={i} data-detail className="block truncate text-hint">
+          {line}
+        </span>
+      ))}
     </button>
   )
 }

@@ -41,7 +41,18 @@ export function Dialog({ title, onClose, children }: DialogProps) {
         className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-bg p-4 pb-[max(1rem,var(--tg-safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-3 text-lg font-semibold">{title}</h2>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          {/* Every sheet can be closed without scrolling to its own buttons. */}
+          <button
+            type="button"
+            aria-label="Закрыть"
+            onClick={onClose}
+            className="-mr-2 -mt-1 shrink-0 rounded-full px-3 py-1 text-xl leading-none text-hint hover:bg-surface"
+          >
+            ✕
+          </button>
+        </div>
         {children}
       </div>
     </div>

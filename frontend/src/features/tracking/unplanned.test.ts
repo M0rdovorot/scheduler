@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { defaultUnplanned, toUnplannedRequest, validateUnplanned } from './unplanned'
+import {
+  defaultUnplanned,
+  toUnplannedRequest,
+  unplannedForSelection,
+  validateUnplanned,
+} from './unplanned'
 
 const tz = 'Europe/Moscow'
 const NOW = new Date('2026-10-14T09:00:40Z') // 12:00:40 Moscow
@@ -52,5 +57,43 @@ describe('toUnplannedRequest', () => {
       actual_start: '2026-10-14T08:30:00.000Z',
       actual_end: '2026-10-14T09:00:00.000Z',
     })
+  })
+})
+
+describe('unplannedForSelection', () => {
+  it('is a back-dated fact over the selected slots', () => {
+    // 09:00–10:30 on the 14th, selected at 12:00.
+    expect(unplannedForSelection('2026-10-14', 9 * 60, 10 * 60 + 30, NOW, tz)).toEqual({
+      title: '',
+      mode: 'past',
+      start: '2026-10-14T09:00',
+      end: '2026-10-14T10:30',
+      categoryIds: [],
+    })
+  })
+
+  it('cuts a selection that reaches past now, because a fact cannot be in the future', () => {
+    const draft = unplannedForSelection('2026-10-14', 11 * 60, 14 * 60, NOW, tz)
+    expect(draft.start).toBe('2026-10-14T11:00')
+    expect(draft.end).toBe('2026-10-14T12:00')
+  })
+
+  it('falls back to the last half hour when the selection starts in the future', () => {
+    const draft = unplannedForSelection('2026-10-14', 15 * 60, 16 * 60, NOW, tz)
+    expect(draft).toMatchObject({
+      mode: 'past',
+      start: '2026-10-14T11:30',
+      end: '2026-10-14T12:00',
+    })
+    const tomorrow = unplannedForSelection('2026-10-15', 9 * 60, 10 * 60, NOW, tz)
+    expect(tomorrow).toMatchObject({ mode: 'past', start: '2026-10-14T11:30' })
+  })
+
+  it('makes a draft that passes the check once it has a title', () => {
+    const draft = {
+      ...unplannedForSelection('2026-10-14', 9 * 60, 10 * 60, NOW, tz),
+      title: 'Звонок',
+    }
+    expect(validateUnplanned(draft, tz)).toEqual({})
   })
 })

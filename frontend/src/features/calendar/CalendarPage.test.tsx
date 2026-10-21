@@ -375,6 +375,34 @@ describe('calendar', () => {
     expect(c.style.width).toContain('100%')
   })
 
+  it('adds a fact, not a plan, with the "+" button when the grid shows the fact', async () => {
+    useCalendarStore.setState({ view: null, anchor: null, mode: 'fact' })
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело в факте' }))
+    const form = within(await dialog())
+    expect(screen.getByRole('dialog', { name: 'Дело вне плана' })).toBeTruthy()
+    expect(form.getByText(/попадёт в факт/)).toBeTruthy()
+    // Back-dated from the start: the last half hour is ready.
+    expect((form.getByLabelText('Началось') as HTMLInputElement).value).toBe('2026-10-14T11:30')
+    expect((form.getByLabelText('Закончилось') as HTMLInputElement).value).toBe('2026-10-14T12:00')
+  })
+
+  it('keeps the plan form for the "+" button when the grid shows the plan', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+    expect(screen.getByRole('dialog', { name: 'Новое дело' })).toBeTruthy()
+  })
+
+  it('closes a sheet with its own button', async () => {
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+    await ui.click(within(await dialog()).getByRole('button', { name: 'Закрыть' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('creates a task with the "+" button, converting the time to UTC', async () => {
     const ui = userEvent.setup()
     renderCalendar()

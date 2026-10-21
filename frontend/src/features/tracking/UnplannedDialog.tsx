@@ -17,6 +17,8 @@ interface UnplannedDialogProps {
   categories: readonly Category[]
   tz: string
   now: Date
+  /** The draft to start from, e.g. the times selected in the grid. */
+  initial?: UnplannedDraft
   onDone: () => void
   onCancel: () => void
 }
@@ -24,10 +26,17 @@ interface UnplannedDialogProps {
 const fieldClass = 'mt-1 w-full rounded-xl border border-separator bg-surface px-3 py-2'
 
 /** A task that was never planned: start a timer, or add it back-dated with its fact (FR-5.7). */
-export function UnplannedDialog({ categories, tz, now, onDone, onCancel }: UnplannedDialogProps) {
+export function UnplannedDialog({
+  categories,
+  tz,
+  now,
+  initial,
+  onDone,
+  onCancel,
+}: UnplannedDialogProps) {
   const platform = usePlatform()
   const create = useCreateUnplanned()
-  const [draft, setDraft] = useState<UnplannedDraft>(() => defaultUnplanned(now, tz))
+  const [draft, setDraft] = useState<UnplannedDraft>(() => initial ?? defaultUnplanned(now, tz))
   const [error, setError] = useState<string | null>(null)
 
   const errors = validateUnplanned(draft, tz)
@@ -70,6 +79,10 @@ export function UnplannedDialog({ categories, tz, now, onDone, onCancel }: Unpla
             </span>
           )}
         </div>
+
+        <p className="text-sm text-hint">
+          Дело, которого не было в плане: оно сразу попадёт в факт и в статистику.
+        </p>
 
         <div role="radiogroup" aria-label="Как добавить" className="space-y-1">
           {(

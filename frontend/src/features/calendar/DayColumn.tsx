@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import type { Category, Instance, SlotMinutes } from '@/api/types'
 import { isUnmarked } from '@/features/tracking/fact'
 import { blocksForDay, type ShowMode } from './blocks'
+import { detailLines } from './blockLines'
 import { instanceColor } from './categoryColor'
 import type { Day } from './dates'
 import { EventBlock } from './EventBlock'
@@ -91,6 +92,11 @@ export function DayColumn({
               columns={place.columns}
               unmarked={block.kind === 'plan' && isUnmarked(instance, now)}
               dense={dense}
+              details={detailLines(
+                block,
+                `${formatMinutes(block.seg.startMin)}–${formatMinutes(block.seg.endMin)}`,
+                tz,
+              )}
               onOpen={onOpen}
             />
             {stripe && (

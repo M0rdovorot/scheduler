@@ -1,4 +1,6 @@
+import type { Day } from '@/features/calendar/dates'
 import { fromLocalInput, toLocalInput } from '@/features/calendar/localTime'
+import { localAt } from '@/features/calendar/taskDraft'
 
 export type UnplannedMode = 'timer' | 'past'
 
@@ -25,6 +27,36 @@ export function defaultUnplanned(now: Date, tz: string): UnplannedDraft {
     start: toLocalInput(new Date(rounded.getTime() - 30 * minute), tz),
     end: toLocalInput(rounded, tz),
     categoryIds: [],
+  }
+}
+
+/** A back-dated fact, with the last half hour ready. */
+export function pastUnplanned(now: Date, tz: string): UnplannedDraft {
+  return { ...defaultUnplanned(now, tz), mode: 'past' }
+}
+
+/**
+ * A fact over the slots selected in the grid. A fact cannot lie in the future, so a selection
+ * that reaches past `now` is cut at it; one that starts after it falls back to the last half hour.
+ */
+export function unplannedForSelection(
+  day: Day,
+  startMin: number,
+  endMin: number,
+  now: Date,
+  tz: string,
+): UnplannedDraft {
+  const fallback = pastUnplanned(now, tz)
+  const current = Math.floor(now.getTime() / minute) * minute
+  const start = fromLocalInput(localAt(day, startMin), tz)
+  const end = fromLocalInput(localAt(day, endMin), tz)
+  if (!start || !end || start.getTime() >= current) return fallback
+  const cut = end.getTime() > current ? new Date(current) : end
+  return {
+    ...fallback,
+    mode: 'past',
+    start: toLocalInput(start, tz),
+    end: toLocalInput(cut, tz),
   }
 }
 
