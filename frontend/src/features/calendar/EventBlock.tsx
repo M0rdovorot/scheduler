@@ -109,7 +109,7 @@ export function EventBlock({
         {instance.title}
       </span>
       {details.slice(0, linesThatFit(height, dense)).map((line, i) => (
-        <span key={i} data-detail className="block truncate text-hint">
+        <span key={i} data-detail className="block truncate text-fg/75">
           {line}
         </span>
       ))}
