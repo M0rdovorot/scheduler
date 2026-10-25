@@ -407,6 +407,11 @@ func (e UpdateInstanceParamsScope) Valid() bool {
 	}
 }
 
+// AcceptPartnerInviteRequest defines model for AcceptPartnerInviteRequest.
+type AcceptPartnerInviteRequest struct {
+	Token string `json:"token"`
+}
+
 // AuthConfig defines model for AuthConfig.
 type AuthConfig struct {
 	// TelegramBotId Bot for `Telegram.Login.auth`; 0 when Telegram sign-in is unavailable
@@ -706,6 +711,31 @@ type MoveCategoryRequest struct {
 	ParentId *openapi_types.UUID `json:"parent_id,omitempty"`
 }
 
+// Partner defines model for Partner.
+type Partner struct {
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName string    `json:"display_name"`
+
+	// HabitsShared The user lets this partner see their habits
+	HabitsShared bool               `json:"habits_shared"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// TasksShared The user lets this partner see the titles of their tasks
+	TasksShared bool `json:"tasks_shared"`
+}
+
+// PartnerAccess defines model for PartnerAccess.
+type PartnerAccess struct {
+	Habits *bool `json:"habits,omitempty"`
+	Tasks  *bool `json:"tasks,omitempty"`
+}
+
+// PartnerInvite defines model for PartnerInvite.
+type PartnerInvite struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
+}
+
 // PlanVsFact defines model for PlanVsFact.
 type PlanVsFact struct {
 	Done       int `json:"done"`
@@ -988,6 +1018,9 @@ type HabitId = openapi_types.UUID
 // InstanceId defines model for InstanceId.
 type InstanceId = openapi_types.UUID
 
+// PartnerId defines model for PartnerId.
+type PartnerId = openapi_types.UUID
+
 // Scope defines model for Scope.
 type Scope string
 
@@ -1090,6 +1123,12 @@ type UpdateTrackingJSONRequestBody = TrackingPatch
 
 // UpdateMySettingsJSONRequestBody defines body for UpdateMySettings for application/json ContentType.
 type UpdateMySettingsJSONRequestBody = SettingsPatch
+
+// AcceptPartnerInviteJSONRequestBody defines body for AcceptPartnerInvite for application/json ContentType.
+type AcceptPartnerInviteJSONRequestBody = AcceptPartnerInviteRequest
+
+// SetPartnerAccessJSONRequestBody defines body for SetPartnerAccess for application/json ContentType.
+type SetPartnerAccessJSONRequestBody = PartnerAccess
 
 // SetGlobalRemindersJSONRequestBody defines body for SetGlobalReminders for application/json ContentType.
 type SetGlobalRemindersJSONRequestBody = GlobalReminders
@@ -1213,6 +1252,21 @@ type ServerInterface interface {
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(w http.ResponseWriter, r *http.Request)
+	// ListPartners Partners of the user
+	// (GET /partners)
+	ListPartners(w http.ResponseWriter, r *http.Request)
+	// CreatePartnerInvite Create an invite link
+	// (POST /partners/invites)
+	CreatePartnerInvite(w http.ResponseWriter, r *http.Request)
+	// AcceptPartnerInvite Accept an invite
+	// (POST /partners/invites/accept)
+	AcceptPartnerInvite(w http.ResponseWriter, r *http.Request)
+	// RemovePartner Break the link
+	// (DELETE /partners/{id})
+	RemovePartner(w http.ResponseWriter, r *http.Request, id PartnerId)
+	// SetPartnerAccess Give or take back access for a partner
+	// (PUT /partners/{id}/access)
+	SetPartnerAccess(w http.ResponseWriter, r *http.Request, id PartnerId)
 	// GetGlobalReminders The master switch, the quiet hours and the default reminders
 	// (GET /reminders/global)
 	GetGlobalReminders(w http.ResponseWriter, r *http.Request)
@@ -1462,6 +1516,36 @@ func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 // UpdateMySettings Change settings; omitted fields stay as they are
 // (PATCH /me/settings)
 func (_ Unimplemented) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListPartners Partners of the user
+// (GET /partners)
+func (_ Unimplemented) ListPartners(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreatePartnerInvite Create an invite link
+// (POST /partners/invites)
+func (_ Unimplemented) CreatePartnerInvite(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AcceptPartnerInvite Accept an invite
+// (POST /partners/invites/accept)
+func (_ Unimplemented) AcceptPartnerInvite(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RemovePartner Break the link
+// (DELETE /partners/{id})
+func (_ Unimplemented) RemovePartner(w http.ResponseWriter, r *http.Request, id PartnerId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetPartnerAccess Give or take back access for a partner
+// (PUT /partners/{id}/access)
+func (_ Unimplemented) SetPartnerAccess(w http.ResponseWriter, r *http.Request, id PartnerId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2394,6 +2478,100 @@ func (siw *ServerInterfaceWrapper) UpdateMySettings(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListPartners operation middleware
+func (siw *ServerInterfaceWrapper) ListPartners(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPartners(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePartnerInvite operation middleware
+func (siw *ServerInterfaceWrapper) CreatePartnerInvite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePartnerInvite(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptPartnerInvite operation middleware
+func (siw *ServerInterfaceWrapper) AcceptPartnerInvite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptPartnerInvite(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemovePartner operation middleware
+func (siw *ServerInterfaceWrapper) RemovePartner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PartnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemovePartner(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPartnerAccess operation middleware
+func (siw *ServerInterfaceWrapper) SetPartnerAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PartnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPartnerAccess(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGlobalReminders operation middleware
 func (siw *ServerInterfaceWrapper) GetGlobalReminders(w http.ResponseWriter, r *http.Request) {
 
@@ -2860,6 +3038,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/reminders/{scope}/{id}", wrapper.SetReminders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/partners", wrapper.ListPartners)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/partners/invites", wrapper.CreatePartnerInvite)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/partners/invites/accept", wrapper.AcceptPartnerInvite)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/partners/{id}", wrapper.RemovePartner)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/partners/{id}/access", wrapper.SetPartnerAccess)
 	})
 
 	return r
@@ -4807,6 +5000,263 @@ func (response UpdateMySettings401JSONResponse) VisitUpdateMySettingsResponse(w 
 	return err
 }
 
+type ListPartnersRequestObject struct {
+}
+
+type ListPartnersResponseObject interface {
+	VisitListPartnersResponse(w http.ResponseWriter) error
+}
+
+type ListPartners200JSONResponse []Partner
+
+func (response ListPartners200JSONResponse) VisitListPartnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPartners401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListPartners401JSONResponse) VisitListPartnersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePartnerInviteRequestObject struct {
+}
+
+type CreatePartnerInviteResponseObject interface {
+	VisitCreatePartnerInviteResponse(w http.ResponseWriter) error
+}
+
+type CreatePartnerInvite201JSONResponse PartnerInvite
+
+func (response CreatePartnerInvite201JSONResponse) VisitCreatePartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePartnerInvite401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreatePartnerInvite401JSONResponse) VisitCreatePartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptPartnerInviteRequestObject struct {
+	Body *AcceptPartnerInviteJSONRequestBody
+}
+
+type AcceptPartnerInviteResponseObject interface {
+	VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error
+}
+
+type AcceptPartnerInvite200JSONResponse Partner
+
+func (response AcceptPartnerInvite200JSONResponse) VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptPartnerInvite400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AcceptPartnerInvite400JSONResponse) VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptPartnerInvite401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AcceptPartnerInvite401JSONResponse) VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptPartnerInvite404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AcceptPartnerInvite404JSONResponse) VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptPartnerInvite409JSONResponse Error
+
+func (response AcceptPartnerInvite409JSONResponse) VisitAcceptPartnerInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePartnerRequestObject struct {
+	Id PartnerId `json:"id"`
+}
+
+type RemovePartnerResponseObject interface {
+	VisitRemovePartnerResponse(w http.ResponseWriter) error
+}
+
+type RemovePartner204Response struct {
+}
+
+func (response RemovePartner204Response) VisitRemovePartnerResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemovePartner401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RemovePartner401JSONResponse) VisitRemovePartnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemovePartner404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RemovePartner404JSONResponse) VisitRemovePartnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPartnerAccessRequestObject struct {
+	Id   PartnerId `json:"id"`
+	Body *SetPartnerAccessJSONRequestBody
+}
+
+type SetPartnerAccessResponseObject interface {
+	VisitSetPartnerAccessResponse(w http.ResponseWriter) error
+}
+
+type SetPartnerAccess200JSONResponse Partner
+
+func (response SetPartnerAccess200JSONResponse) VisitSetPartnerAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPartnerAccess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetPartnerAccess400JSONResponse) VisitSetPartnerAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPartnerAccess401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetPartnerAccess401JSONResponse) VisitSetPartnerAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPartnerAccess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetPartnerAccess404JSONResponse) VisitSetPartnerAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGlobalRemindersRequestObject struct {
 }
 
@@ -5323,6 +5773,21 @@ type StrictServerInterface interface {
 	// UpdateMySettings Change settings; omitted fields stay as they are
 	// (PATCH /me/settings)
 	UpdateMySettings(ctx context.Context, request UpdateMySettingsRequestObject) (UpdateMySettingsResponseObject, error)
+	// ListPartners Partners of the user
+	// (GET /partners)
+	ListPartners(ctx context.Context, request ListPartnersRequestObject) (ListPartnersResponseObject, error)
+	// CreatePartnerInvite Create an invite link
+	// (POST /partners/invites)
+	CreatePartnerInvite(ctx context.Context, request CreatePartnerInviteRequestObject) (CreatePartnerInviteResponseObject, error)
+	// AcceptPartnerInvite Accept an invite
+	// (POST /partners/invites/accept)
+	AcceptPartnerInvite(ctx context.Context, request AcceptPartnerInviteRequestObject) (AcceptPartnerInviteResponseObject, error)
+	// RemovePartner Break the link
+	// (DELETE /partners/{id})
+	RemovePartner(ctx context.Context, request RemovePartnerRequestObject) (RemovePartnerResponseObject, error)
+	// SetPartnerAccess Give or take back access for a partner
+	// (PUT /partners/{id}/access)
+	SetPartnerAccess(ctx context.Context, request SetPartnerAccessRequestObject) (SetPartnerAccessResponseObject, error)
 	// GetGlobalReminders The master switch, the quiet hours and the default reminders
 	// (GET /reminders/global)
 	GetGlobalReminders(ctx context.Context, request GetGlobalRemindersRequestObject) (GetGlobalRemindersResponseObject, error)
@@ -6422,6 +6887,144 @@ func (sh *strictHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateMySettingsResponseObject); ok {
 		if err := validResponse.VisitUpdateMySettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPartners operation middleware
+func (sh *strictHandler) ListPartners(w http.ResponseWriter, r *http.Request) {
+	var request ListPartnersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPartners(ctx, request.(ListPartnersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPartners")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPartnersResponseObject); ok {
+		if err := validResponse.VisitListPartnersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePartnerInvite operation middleware
+func (sh *strictHandler) CreatePartnerInvite(w http.ResponseWriter, r *http.Request) {
+	var request CreatePartnerInviteRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePartnerInvite(ctx, request.(CreatePartnerInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePartnerInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePartnerInviteResponseObject); ok {
+		if err := validResponse.VisitCreatePartnerInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptPartnerInvite operation middleware
+func (sh *strictHandler) AcceptPartnerInvite(w http.ResponseWriter, r *http.Request) {
+	var request AcceptPartnerInviteRequestObject
+
+	var body AcceptPartnerInviteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptPartnerInvite(ctx, request.(AcceptPartnerInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptPartnerInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptPartnerInviteResponseObject); ok {
+		if err := validResponse.VisitAcceptPartnerInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemovePartner operation middleware
+func (sh *strictHandler) RemovePartner(w http.ResponseWriter, r *http.Request, id PartnerId) {
+	var request RemovePartnerRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemovePartner(ctx, request.(RemovePartnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemovePartner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemovePartnerResponseObject); ok {
+		if err := validResponse.VisitRemovePartnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPartnerAccess operation middleware
+func (sh *strictHandler) SetPartnerAccess(w http.ResponseWriter, r *http.Request, id PartnerId) {
+	var request SetPartnerAccessRequestObject
+
+	request.Id = id
+
+	var body SetPartnerAccessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPartnerAccess(ctx, request.(SetPartnerAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPartnerAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPartnerAccessResponseObject); ok {
+		if err := validResponse.VisitSetPartnerAccessResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

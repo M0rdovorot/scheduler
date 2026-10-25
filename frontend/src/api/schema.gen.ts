@@ -770,6 +770,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Partners of the user */
+        get: operations["listPartners"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/partners/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an invite link
+         * @description The invite works once and for seven days. The token is returned only here; the client
+         *     builds the link from it.
+         */
+        post: operations["createPartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/partners/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invite
+         * @description Links the user with whoever made the invite; both then see each other's busy time.
+         *     An unknown, expired or used token gives `404 invite_invalid`. The invite is not used up
+         *     by a failed accept.
+         */
+        post: operations["acceptPartnerInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/partners/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Break the link
+         * @description The access given in either direction goes with it.
+         */
+        delete: operations["removePartner"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/partners/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give or take back access for a partner
+         * @description Only the given fields change. Access to habits is separate from access to tasks.
+         */
+        put: operations["setPartnerAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1263,6 +1367,29 @@ export interface components {
             override: components["schemas"]["ReminderOverride"] | null;
             effective: components["schemas"]["EffectiveReminders"];
         };
+        Partner: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description The user lets this partner see the titles of their tasks */
+            tasks_shared: boolean;
+            /** @description The user lets this partner see their habits */
+            habits_shared: boolean;
+        };
+        PartnerInvite: {
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AcceptPartnerInviteRequest: {
+            token: string;
+        };
+        PartnerAccess: {
+            tasks?: boolean;
+            habits?: boolean;
+        };
     };
     responses: {
         /** @description Session token and the signed-in user */
@@ -1303,6 +1430,7 @@ export interface components {
         };
     };
     parameters: {
+        PartnerId: string;
         SeriesId: string;
         /**
          * @description What an edit or a delete of an occurrence of a regular task applies to:
@@ -2452,6 +2580,135 @@ export interface operations {
                     "application/json": components["schemas"]["ReminderLevel"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPartners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Partners, with the access the user has given to each */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Partner"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createPartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invite */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartnerInvite"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    acceptPartnerInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptPartnerInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The new partner */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Partner"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description `own_invite` (the user made this invite) or `already_partners` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removePartner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setPartnerAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartnerAccess"];
+            };
+        };
+        responses: {
+            /** @description The partner after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Partner"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

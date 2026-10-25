@@ -189,19 +189,24 @@
 - `send_at`, `sent_at`, `gave_up_at`, `attempts`, `last_error`, `telegram_message_id`
 - Ключ `inst:<id>:<kind>:<offset>:<planned_start unix>` содержит плановое начало: перенос дела даёт новые напоминания.
 
-### Совместное планирование (после MVP, набросок)
+### Совместное планирование (этап 11)
 
-- **partner_invites** — `token`, `inviter_id`, `expires_at`, `accepted_by`, `accepted_at`.
-- **partnerships** — пара пользователей, взаимная связь; создаётся, когда приглашение принято.
-- **task_access_grants** — `owner_id`, `grantee_id`. Односторонний доступ к названиям дел владельца.
-- **habit_access_grants** — `owner_id`, `grantee_id`. Отдельный односторонний доступ к привычкам владельца (FR-11.8); без него партнёр привычек не видит.
-- Поле `visibility` у `task_series` и `task_instances`: `partners` | `granted` | `private`. Приватность по умолчанию хранится в настройках пользователя.
-- Что видит партнёр:
+- **partner_invites** — `id`, `inviter_id`, `token_hash` (UNIQUE, сам токен в БД не хранится, как у сессий), `expires_at` (7 дней), `accepted_by`, `accepted_at`.
+- **partnerships** — взаимная связь хранится двумя строками `(user_id, partner_id)` и `(partner_id, user_id)`; обе создаются и удаляются в одной транзакции. Так проверка «они партнёры» — один поиск по ключу, а внешние ключи доступов указывают на строку направления.
+- **task_access_grants** — `owner_id`, `grantee_id`. Односторонний доступ к названиям дел владельца. Внешний ключ `(owner_id, grantee_id)` → `partnerships (user_id, partner_id)` с `ON DELETE CASCADE`: разрыв связи сам убирает доступы.
+- **habit_access_grants** — то же для привычек (FR-11.8), отдельная таблица.
+- `users.default_visibility` — приватность новых дел (`private` по умолчанию).
+- `task_series.visibility` (NOT NULL) и `task_instances.visibility` (NULL = как у серии). Значения `partners` | `granted` | `private`. Действующая приватность экземпляра — `COALESCE(ti.visibility, ts.visibility, 'private')`: у дела без серии и без значения (серию удалили) закрыто.
+- Что видит партнёр (`viewer` смотрит `owner`):
   - `private` → «занят»;
-  - `granted` → название, если есть grant, иначе «занят»;
-  - `partners` → название.
-- Общее свободное время: окно − объединение занятости выбранных людей, считается на `tstzmultirange`.
-- Приглашение в Telegram можно сделать ссылкой `t.me/<бот>?startapp=<token>`: Mini App получит токен в `start_param`.
+  - `granted` → название, если у `owner` есть grant для `viewer`, иначе «занят»;
+  - `partners` → название;
+  - дело привычки (`task_series.habit_id`) → название только при `habit_access_grants`, независимо от `visibility`.
+- Занятое время (FR-11.9): дела со статусом не `rescheduled`, `cancelled`, `not_done`; интервал — факт, если он есть (идущий таймер длится до «сейчас»), иначе план. Партнёру отдаётся только интервал и, если разрешено, название: ни категорий, ни описаний, ни статусов, ни комментариев.
+- Серии партнёра материализуются перед чтением тем же `Materialize`, что и при обычном чтении календаря.
+- Общее свободное время: окно − объединение занятости выбранных людей. Считается в Go (объединение интервалов уже есть в `internal/stats`) на данных, отфильтрованных по пользователям; запрос к БД возвращает только интервалы.
+- Права проверяются в сервисе `partner`, а не в хендлерах: каждый метод принимает `viewerID` и `ownerID` и первым делом проверяет связь; чужой `ownerID` без связи — `404`, как несуществующий.
+- Приглашение в Telegram можно сделать ссылкой `t.me/<бот>?startapp=<token>`: Mini App получит токен в `start_param`. В вебе — `<WEBAPP_URL>/?invite=<token>`.
 
 ## Ключевые потоки
 
@@ -364,6 +369,13 @@
 | `GET /reminders/{scope}/{targetId}` | настройки напоминаний уровня |
 | `PUT /reminders/{scope}/{targetId}` | задать свои правила уровня |
 | `DELETE /reminders/{scope}/{targetId}` | вернуть наследование |
+| `POST /partners/invites` | создать приглашение: токен показывается один раз, в ответе готовые ссылки |
+| `POST /partners/invites/accept` | принять приглашение по токену |
+| `GET /partners` | партнёры, с признаками «ты выдал доступ к делам / к привычкам» |
+| `DELETE /partners/{id}` | разорвать связь (доступы пропадают) |
+| `PUT /partners/{id}/access` | выдать или отозвать доступ к делам и к привычкам: `{ tasks, habits }` |
+| `GET /partners/{id}/busy?from&to` | календарь партнёра: интервалы, у каждого `title` или `null` |
+| `GET /free-time?from&to&with=…&min_minutes=` | общее свободное время, себя и партнёров |
 | `GET /stats?from&to` | вся статистика периода: часы по категориям и делам, занятое время, план против факта, дни, отклонения |
 | `GET /instances/running` | дела с идущим таймером, с любого дня |
 

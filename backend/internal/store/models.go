@@ -35,6 +35,12 @@ type Habit struct {
 	CreatedAt    time.Time
 }
 
+type HabitAccessGrant struct {
+	OwnerID   uuid.UUID
+	GranteeID uuid.UUID
+	CreatedAt time.Time
+}
+
 type HabitLog struct {
 	HabitID        uuid.UUID
 	UserID         uuid.UUID
@@ -92,6 +98,22 @@ type Notification struct {
 	ClaimedUntil      *time.Time
 }
 
+type PartnerInvite struct {
+	ID         uuid.UUID
+	InviterID  uuid.UUID
+	TokenHash  []byte
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	AcceptedBy uuid.NullUUID
+	AcceptedAt *time.Time
+}
+
+type Partnership struct {
+	UserID    uuid.UUID
+	PartnerID uuid.UUID
+	CreatedAt time.Time
+}
+
 type ReminderRule struct {
 	ID            uuid.UUID
 	SettingID     uuid.UUID
@@ -128,6 +150,12 @@ type Session struct {
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	LastUsedAt time.Time
+}
+
+type TaskAccessGrant struct {
+	OwnerID   uuid.UUID
+	GranteeID uuid.UUID
+	CreatedAt time.Time
 }
 
 type TaskInstance struct {

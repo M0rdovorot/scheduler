@@ -15,6 +15,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/auth"
 	"github.com/m0rdovorot/scheduler/backend/internal/category"
 	"github.com/m0rdovorot/scheduler/backend/internal/habit"
+	"github.com/m0rdovorot/scheduler/backend/internal/partner"
 	"github.com/m0rdovorot/scheduler/backend/internal/reminder"
 	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/task"
@@ -43,6 +44,7 @@ type Deps struct {
 	Stats      *stats.Service
 	Habits     *habit.Service
 	Reminders  *reminder.Service
+	Partners   *partner.Service
 	// SecureCookies marks the session cookie Secure (HTTPS only); off in dev.
 	SecureCookies bool
 }

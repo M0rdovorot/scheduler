@@ -18,6 +18,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/config"
 	"github.com/m0rdovorot/scheduler/backend/internal/habit"
 	"github.com/m0rdovorot/scheduler/backend/internal/httpapi"
+	"github.com/m0rdovorot/scheduler/backend/internal/partner"
 	"github.com/m0rdovorot/scheduler/backend/internal/reminder"
 	"github.com/m0rdovorot/scheduler/backend/internal/stats"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
@@ -78,6 +79,7 @@ func run() error {
 		Stats:      stats.NewService(tasks, categories, users),
 		Habits:     habits,
 		Reminders:  reminders,
+		Partners:   partner.NewService(st),
 	})
 
 	if cfg.BotEnabled {

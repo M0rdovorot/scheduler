@@ -18,6 +18,7 @@ tags:
   - name: stats
   - name: habits
   - name: reminders
+  - name: partners
 paths:
   /healthz:
     get:
@@ -1045,8 +1046,125 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /partners:
+    get:
+      operationId: listPartners
+      summary: Partners of the user
+      tags: [partners]
+      responses:
+        "200":
+          description: Partners, with the access the user has given to each
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Partner"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /partners/invites:
+    post:
+      operationId: createPartnerInvite
+      summary: Create an invite link
+      description: |
+        The invite works once and for seven days. The token is returned only here; the client
+        builds the link from it.
+      tags: [partners]
+      responses:
+        "201":
+          description: The invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerInvite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /partners/invites/accept:
+    post:
+      operationId: acceptPartnerInvite
+      summary: Accept an invite
+      description: |
+        Links the user with whoever made the invite; both then see each other's busy time.
+        An unknown, expired or used token gives `404 invite_invalid`. The invite is not used up
+        by a failed accept.
+      tags: [partners]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptPartnerInviteRequest"
+      responses:
+        "200":
+          description: The new partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `own_invite` (the user made this invite) or `already_partners`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /partners/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PartnerId"
+    delete:
+      operationId: removePartner
+      summary: Break the link
+      description: The access given in either direction goes with it.
+      tags: [partners]
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /partners/{id}/access:
+    parameters:
+      - $ref: "#/components/parameters/PartnerId"
+    put:
+      operationId: setPartnerAccess
+      summary: Give or take back access for a partner
+      description: Only the given fields change. Access to habits is separate from access to tasks.
+      tags: [partners]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerAccess"
+      responses:
+        "200":
+          description: The partner after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
+    PartnerId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     SeriesId:
       name: id
       in: path
@@ -2017,3 +2135,45 @@ components:
             - $ref: "#/components/schemas/ReminderOverride"
         effective:
           $ref: "#/components/schemas/EffectiveReminders"
+    Partner:
+      type: object
+      required: [id, display_name, created_at, tasks_shared, habits_shared]
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        tasks_shared:
+          type: boolean
+          description: The user lets this partner see the titles of their tasks
+        habits_shared:
+          type: boolean
+          description: The user lets this partner see their habits
+    PartnerInvite:
+      type: object
+      required: [token, expires_at]
+      properties:
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    AcceptPartnerInviteRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          maxLength: 200
+    PartnerAccess:
+      type: object
+      properties:
+        tasks:
+          type: boolean
+        habits:
+          type: boolean
