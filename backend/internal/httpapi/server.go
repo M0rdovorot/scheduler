@@ -43,6 +43,8 @@ type Deps struct {
 	Stats      *stats.Service
 	Habits     *habit.Service
 	Reminders  *reminder.Service
+	// SecureCookies marks the session cookie Secure (HTTPS only); off in dev.
+	SecureCookies bool
 }
 
 // Server implements StrictServerInterface.
@@ -113,6 +115,38 @@ func (s *Server) LoginTelegram(ctx context.Context, req LoginTelegramRequestObje
 		return nil, err
 	}
 	return LoginTelegram200JSONResponse{SessionIssuedJSONResponse(toSession(sess))}, nil
+}
+
+func (s *Server) GetAuthConfig(_ context.Context, _ GetAuthConfigRequestObject) (GetAuthConfigResponseObject, error) {
+	return GetAuthConfig200JSONResponse{TelegramBotId: s.Auth.BotID()}, nil
+}
+
+func (s *Server) LoginTelegramWidget(ctx context.Context, req LoginTelegramWidgetRequestObject) (LoginTelegramWidgetResponseObject, error) {
+	sess, err := s.Auth.LoginTelegramWidget(ctx, req.Body.AuthData, req.Body.Timezone)
+	var verr *validation.Error
+	switch {
+	case errors.As(err, &verr):
+		return LoginTelegramWidget400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, auth.ErrInvalidInitData):
+		return LoginTelegramWidget401JSONResponse{UnauthorizedJSONResponse{
+			Code: "invalid_auth_data", Message: "invalid or expired Telegram sign-in data",
+		}}, nil
+	case err != nil:
+		return nil, err
+	}
+	cookie := sessionCookieHeader(sess.Token, sess.ExpiresAt, s.SecureCookies)
+	return LoginTelegramWidget200JSONResponse{
+		Body:    WebSession{ExpiresAt: sess.ExpiresAt, User: toUser(sess.User)},
+		Headers: LoginTelegramWidget200ResponseHeaders{SetCookie: &cookie},
+	}, nil
+}
+
+func (s *Server) Logout(ctx context.Context, _ LogoutRequestObject) (LogoutResponseObject, error) {
+	if err := s.Auth.Logout(ctx, sessionToken(ctx)); err != nil {
+		return nil, err
+	}
+	cookie := sessionCookieHeader("", time.Time{}, s.SecureCookies)
+	return Logout204Response{Headers: Logout204ResponseHeaders{SetCookie: &cookie}}, nil
 }
 
 func (s *Server) LoginDev(ctx context.Context, req LoginDevRequestObject) (LoginDevResponseObject, error) {

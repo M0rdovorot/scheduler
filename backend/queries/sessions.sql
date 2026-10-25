@@ -12,3 +12,6 @@ UPDATE sessions SET last_used_at = $2 WHERE id = $1;
 
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at <= $1;
+
+-- name: DeleteSession :exec
+DELETE FROM sessions WHERE token_hash = $1;

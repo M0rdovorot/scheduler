@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { json, net, type StubRequest } from '@/test/fetchStub'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -11,8 +11,11 @@ import { App } from './App'
 import { setupApi } from '@/api/setup'
 import { createBrowserPlatform } from '@/platform/browser'
 import { PlatformContext } from '@/platform/context'
+import { clearTelegramAuthResult } from '@/platform'
 
 let user: User
+/** Whether the browser holds a session cookie (the web version). */
+let cookie: boolean
 
 function apiServer(req: StubRequest): Response {
   switch (`${req.method} ${req.path}`) {
@@ -25,7 +28,7 @@ function apiServer(req: StubRequest): Response {
     case 'GET /categories':
       return json(200, [])
     case 'GET /me':
-      return json(200, user)
+      return useAuthStore.getState().token || cookie ? json(200, user) : json(401, {})
     case 'GET /reminders/global':
       return json(200, { enabled: true, quiet_hours: null, rules: [] })
     default:
@@ -69,7 +72,9 @@ beforeEach(() => {
     default_view: 'day',
     deviation_threshold_minutes: 10,
   }
-  useAuthStore.getState().setToken(null)
+  useAuthStore.setState({ token: null, signedOut: false })
+  cookie = false
+  clearTelegramAuthResult()
   net.calls.length = 0
   net.handler = apiServer
 })
@@ -84,10 +89,22 @@ describe('app', () => {
 
     const day = await screen.findByRole('radio', { name: 'День' })
     expect(day.getAttribute('aria-checked')).toBe('true')
-    expect(net.calls[0]).toMatchObject({ method: 'POST', path: '/auth/dev' })
-    expect((net.calls[0]?.body as { timezone: string }).timezone).toBeTruthy()
-    // The user from the login response is reused: no extra /me request.
-    expect(net.calls.some((c) => c.path === '/me')).toBe(false)
+    // No cookie session yet: /me gets 401, dev mode signs in and repeats it.
+    expect(net.calls.slice(0, 3).map((c) => `${c.method} ${c.path} ${c.auth}`)).toEqual([
+      'GET /me null',
+      'POST /auth/dev null',
+      'GET /me Bearer t1',
+    ])
+    expect((net.calls[1]?.body as { timezone: string }).timezone).toBeTruthy()
+  })
+
+  it('uses the cookie session of the web version without signing in', async () => {
+    cookie = true
+    net.handler = (req) => (req.path === '/auth/dev' ? json(404, {}) : apiServer(req))
+    renderApp('/')
+
+    expect(await screen.findByRole('radio', { name: 'День' })).toBeTruthy()
+    expect(net.calls.some((c) => c.path.startsWith('/auth'))).toBe(false)
   })
 
   it('saves only the changed settings, sending the session token', async () => {
@@ -160,13 +177,69 @@ describe('app', () => {
     expect(net.calls.filter((c) => c.method === 'PATCH')).toHaveLength(2)
   })
 
-  it('explains that browser sign-in is unavailable when dev auth is off', async () => {
-    net.handler = () => json(404, { code: 'not_found', message: 'not found' })
+  it('shows the sign-in page when there is no session and dev auth is off', async () => {
+    net.handler = (req) => {
+      if (req.path === '/auth/dev') return json(404, { code: 'not_found', message: 'not found' })
+      if (req.path === '/auth/config') return json(200, { telegram_bot_id: 123456 })
+      return apiServer(req)
+    }
     renderApp('/')
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/только в режиме разработки/),
-    )
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Войти через Telegram' })).toBeTruthy()
+  })
+
+  it('explains when the server has no Telegram sign-in', async () => {
+    net.handler = (req) => {
+      if (req.path === '/auth/dev') return json(404, {})
+      if (req.path === '/auth/config') return json(200, { telegram_bot_id: 0 })
+      return apiServer(req)
+    }
+    renderApp('/')
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/не настроен/)
+    expect(screen.queryByRole('button', { name: 'Войти через Telegram' })).toBeNull()
+  })
+
+  it('finishes signing in when Telegram brings the user back', async () => {
+    const fields = { id: 42, first_name: 'Аня', auth_date: 1, hash: 'h' }
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(fields))))
+    window.location.hash = '#tgAuthResult=' + encoded.replace(/\+/g, '-').replace(/\//g, '_')
+    net.handler = (req) => {
+      if (req.path === '/auth/dev') return json(404, {})
+      if (req.path === '/auth/config') return json(200, { telegram_bot_id: 123456 })
+      if (req.path === '/auth/telegram-widget') {
+        cookie = true
+        return json(200, { expires_at: '2030-01-01T00:00:00Z', user })
+      }
+      return apiServer(req)
+    }
+    renderApp('/')
+
+    expect(await screen.findByRole('radio', { name: 'День' })).toBeTruthy()
+    const logins = net.calls.filter((c) => c.path === '/auth/telegram-widget')
+    expect(logins).toHaveLength(1)
+    expect(logins[0]?.body).toMatchObject({
+      auth_data: { id: '42', first_name: 'Аня', auth_date: '1', hash: 'h' },
+    })
+    expect(window.location.hash).toBe('')
+  })
+
+  it('signs out from the settings page', async () => {
+    const ui = userEvent.setup()
+    cookie = true
+    net.handler = (req) => {
+      if (req.path === '/auth/logout') {
+        cookie = false
+        return new Response(null, { status: 204 })
+      }
+      if (req.path === '/auth/dev') return json(404, {})
+      if (req.path === '/auth/config') return json(200, { telegram_bot_id: 123456 })
+      return apiServer(req)
+    }
+    renderApp('/settings')
+
+    await ui.click(await screen.findByRole('button', { name: 'Выйти' }))
+
+    expect(await screen.findByRole('button', { name: 'Войти через Telegram' })).toBeTruthy()
   })
 })

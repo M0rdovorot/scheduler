@@ -75,6 +75,7 @@ function days(h: Habit, from: string, to: string): HabitDay[] {
 function server(req: StubRequest): Response {
   if (req.path === '/auth/dev')
     return json(200, { token: 't', expires_at: '2030-01-01T00:00:00Z', user })
+  if (req.method === 'GET' && req.path === '/me') return json(200, user)
   if (req.path === '/categories') return json(200, [])
   if (req.path.startsWith('/instances')) return json(200, [])
   if (req.method === 'GET' && req.path === '/habits') return json(200, habits)

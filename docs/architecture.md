@@ -73,7 +73,7 @@
 **user_identities** — способы входа:
 
 - `user_id`, `provider`, `provider_user_id`
-- `provider` — `telegram` в MVP; `email` добавится с веб-версией
+- `provider` — `telegram` (Mini App и Login Widget — один провайдер); `email` добавится позже, только как второй способ входа к существующему аккаунту
 - для Telegram: `username`, `first_name`, `last_name`, `photo_url`, `language_code`
 - для email: `password_hash` (argon2id), `email_verified_at`
 - `UNIQUE(provider, provider_user_id)`
@@ -217,12 +217,29 @@
 - Сессия живёт 30 дней (`SESSION_TTL`); просроченные сессии удаляются при очередном входе.
 - Часовой пояс устройства используется только при создании аккаунта; дальше его меняют в настройках.
 - Значения настроек по умолчанию: слот 30 минут, вид «день», порог отклонения 10 минут.
-- Все маршруты, кроме `/healthz`, `/auth/telegram` и `/auth/dev`, требуют сессию. Список открытых маршрутов — `publicPaths` в `backend/internal/httpapi/auth.go`, он должен совпадать с операциями `security: []` в `openapi.yaml`.
+- Все маршруты, кроме `/healthz`, `/auth/config`, `/auth/telegram`, `/auth/telegram-widget` и `/auth/dev`, требуют сессию. Список открытых маршрутов — `publicPaths` в `backend/internal/httpapi/auth.go`, он должен совпадать с операциями `security: []` в `openapi.yaml`.
 - Фронтенд при ответе 401 один раз входит заново и повторяет запрос.
 
 В режиме разработки (`APP_ENV=dev`, `DEV_AUTH=true`) можно войти без Telegram через `POST /auth/dev`: так приложение открывается в обычном браузере, и на нём можно гонять e2e-тесты. Это отдельный провайдер `dev` в `user_identities`; параметр `key` позволяет завести несколько тестовых пользователей. Сервер не запустится, если `DEV_AUTH=true` при `APP_ENV` не `dev`.
 
-После MVP добавятся вход через Telegram Login Widget (другой алгоритм проверки подписи, тот же `provider = telegram`) и вход по email и паролю.
+### Вход (веб-версия)
+
+Сайт тот же, что у Mini App (`https://plan.…`), и фронтенд тот же: вне Telegram работает адаптер `browser`.
+
+1. При запуске фронтенд запрашивает `GET /me`. Сессия веб-версии — в cookie, поэтому, если пользователь уже входил, этого достаточно.
+2. На 401 фронтенд пробует `POST /auth/dev`. В проде он отвечает 404, и показывается страница входа.
+3. Страница входа берёт `telegram_bot_id` из `GET /auth/config` (это числовая часть токена бота). По кнопке вкладка уходит на страницу входа Telegram: `https://oauth.telegram.org/auth?bot_id=…&origin=…&request_access=write&return_to=<текущая страница>`. Сторонний скрипт `telegram-widget.js` не используется (его режут блокировщики рекламы), всплывающего окна тоже нет (его блокируют браузеры). Код — в `src/platform/telegram.ts`.
+4. Telegram возвращает на `return_to` с подписанными полями в `#tgAuthResult=<base64url JSON>`. Фронтенд убирает их из адреса и отправляет строками и без изменений: `POST /auth/telegram-widget { auth_data, timezone }`.
+5. Бэкенд проверяет подпись. Строка для проверки собирается как у `initData`, но ключ другой: `secret = SHA256(bot_token)`. Свежесть `auth_date` проверяется по тому же `INITDATA_MAX_AGE`. Пользователь — тот же `provider = telegram`, `provider_user_id` = id в Telegram, то есть тот же аккаунт, что в Mini App. Виджет не сообщает язык, поэтому сохранённый `language_code` остаётся.
+6. Сессия уходит в cookie `session` (`HttpOnly`, `Secure` вне dev, `SameSite=Lax`, `Path=/api/v1`), токена в теле ответа нет.
+7. `POST /auth/logout` удаляет сессию и стирает cookie. Кнопка «Выйти» есть только в браузере.
+
+Безопасность:
+
+- Middleware принимает `Authorization: Bearer …` (Mini App, dev) или cookie `session`. Bearer важнее.
+- **CSRF.** Браузер прикладывает cookie и к запросам с чужих сайтов, поэтому запросы с cookie, а также `POST /auth/telegram-widget`, проходят через `http.CrossOriginProtection` (`Sec-Fetch-Site`, иначе `Origin` против `Host`). Небезопасный метод с другого источника получает 403. Соседний поддомен (`diary`) — тоже другой источник.
+- Для окна входа в BotFather должен быть указан домен сайта (`/setdomain`), иначе Telegram отвечает «Bot domain invalid».
+- Без токена бота вход через виджет отклоняется: подпись с пустым ключом подделает кто угодно.
 
 ### Повторы и материализация
 
@@ -318,6 +335,7 @@
 | Метод и путь | Назначение |
 |---|---|
 | `POST /auth/telegram` | вход по `initData` |
+| `GET /auth/config`, `POST /auth/telegram-widget`, `POST /auth/logout` | вход в веб-версии через Telegram и выход |
 | `GET /me`, `PATCH /me/settings` | профиль и настройки |
 | `GET /categories` | все категории пользователя плоским списком, включая архивные (дерево строит клиент по `parent_id`) |
 | `POST /categories` | создать категорию (название, цвет, родитель) |
@@ -376,6 +394,8 @@ frontend/src/
 - `requestWriteAccess`.
 
 Веб-версия — ещё одна реализация этого интерфейса.
+
+**Загрузка `telegram-web-app.js`.** Скрипт не подключается в `index.html`: синхронный скрипт с telegram.org держал бы пустую страницу там, где telegram.org заблокирован. Его грузит `loadTelegramWebApp` и только внутри Telegram, с таймаутом 10 секунд. Признак запуска в Telegram — `tgWebAppData` в хэше адреса, а после перезагрузки внутри Telegram — в `sessionStorage` (`__telegram__initParams`, туда его кладёт сам скрипт). В браузере скрипт не грузится. До старта React в `#root` стоит текст «Загрузка…».
 
 **Что используется из Telegram WebApp:**
 

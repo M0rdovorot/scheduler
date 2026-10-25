@@ -12,7 +12,11 @@ export function setupApi(platform: Platform) {
       refreshToken: () =>
         login(platform).then(
           (session) => session.token,
-          () => null,
+          () => {
+            // Outside Telegram (and without dev auth) only the user can sign in again.
+            if (!platform.initData) useAuthStore.getState().setSignedOut(true)
+            return null
+          },
         ),
       publicPaths,
     }),

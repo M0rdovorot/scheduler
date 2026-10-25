@@ -63,6 +63,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How a browser can sign in */
+        get: operations["getAuthConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/telegram-widget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in on the web with the Telegram Login Widget
+         * @description Verifies the signature and freshness of the data the widget returned.
+         *     This is the same account as in the Mini App. The session goes to an
+         *     httpOnly cookie, not to the response body. The account is created on
+         *     the first sign-in; `timezone` is used only then.
+         */
+        post: operations["loginTelegramWidget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the current session
+         * @description Deletes the session and clears the session cookie.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -737,6 +797,32 @@ export interface components {
              */
             timezone: string;
         };
+        TelegramWidgetLoginRequest: {
+            /**
+             * @description Every field the widget returned (`id`, `first_name`, `auth_date`,
+             *     `hash`, …), as strings and unchanged: the signature covers them all.
+             */
+            auth_data: {
+                [key: string]: string;
+            };
+            /**
+             * @description IANA time zone of the device
+             * @example Europe/Moscow
+             */
+            timezone: string;
+        };
+        AuthConfig: {
+            /**
+             * Format: int64
+             * @description Bot for `Telegram.Login.auth`; 0 when Telegram sign-in is unavailable
+             */
+            telegram_bot_id: number;
+        };
+        WebSession: {
+            /** Format: date-time */
+            expires_at: string;
+            user: components["schemas"]["User"];
+        };
         DevLoginRequest: {
             /** @description Identifies the dev user; defaults to `dev` */
             key?: string;
@@ -1297,6 +1383,73 @@ export interface operations {
             200: components["responses"]["SessionIssued"];
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAuthConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sign-in options for the web version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthConfig"];
+                };
+            };
+        };
+    };
+    loginTelegramWidget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramWidgetLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in; the session cookie is set */
+            200: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getMe: {

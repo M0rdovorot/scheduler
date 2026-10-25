@@ -1,5 +1,8 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useId, useState, type FormEvent } from 'react'
+import { useAuthStore } from '@/api/authStore'
 import { useMe, useUpdateSettings } from '@/api/me'
+import { logout } from '@/api/session'
 import type { SlotMinutes, User, ViewMode } from '@/api/types'
 import { listTimeZones } from '@/lib/timezone'
 import { GlobalReminders } from '@/features/reminders/GlobalReminders'
@@ -23,7 +26,41 @@ export function SettingsPage() {
       {isError && <p className="mt-3 text-danger">Не удалось загрузить настройки</p>}
       {user && <SettingsForm user={user} />}
       {user && <GlobalReminders />}
+      {user && <SignOut />}
     </main>
+  )
+}
+
+/** Web version only: the Mini App's session belongs to Telegram. */
+function SignOut() {
+  const platform = usePlatform()
+  const queryClient = useQueryClient()
+  const signOut = useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      // Forget the user's data first: the sign-in page must not inherit it.
+      queryClient.clear()
+      useAuthStore.getState().setSignedOut(true)
+    },
+  })
+  if (platform.kind !== 'browser') return null
+
+  return (
+    <section className="mt-8 border-t border-separator pt-4">
+      <button
+        type="button"
+        disabled={signOut.isPending}
+        onClick={() => signOut.mutate()}
+        className="rounded-xl border border-separator px-4 py-2 text-danger disabled:opacity-60"
+      >
+        Выйти
+      </button>
+      {signOut.isError && (
+        <p role="alert" className="mt-2 text-danger">
+          Не удалось выйти
+        </p>
+      )}
+    </section>
   )
 }
 

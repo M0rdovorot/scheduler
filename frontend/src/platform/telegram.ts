@@ -37,6 +37,9 @@ interface TelegramWebApp {
   }
 }
 
+/** Fields Telegram's web sign-in returns: id, first_name, auth_date, hash, … */
+export type TelegramAuthData = Record<string, string>
+
 declare global {
   interface Window {
     Telegram?: { WebApp?: TelegramWebApp }
@@ -62,10 +65,51 @@ export function mapTelegramTheme(
   }
 }
 
+const webAppScript = 'https://telegram.org/js/telegram-web-app.js'
+
+/**
+ * Whether Telegram opened this page as a Mini App. Telegram passes the launch
+ * parameters in the hash; after a reload inside Telegram the hash is gone, but
+ * telegram-web-app.js has kept them in sessionStorage.
+ */
+export function isTelegramLaunch(hash: string, stored: string | null): boolean {
+  if (new URLSearchParams(hash.replace(/^#/, '')).has('tgWebAppData')) return true
+  try {
+    const params = JSON.parse(stored ?? 'null') as { tgWebAppData?: unknown } | null
+    return typeof params?.tgWebAppData === 'string' && params.tgWebAppData !== ''
+  } catch {
+    return false
+  }
+}
+
+function storedLaunchParams(): string | null {
+  try {
+    return sessionStorage.getItem('__telegram__initParams')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Loads telegram-web-app.js, but only inside Telegram: in a plain browser the
+ * script is not needed, and where telegram.org is blocked it would hold up the
+ * page. Resolves when the script has loaded, failed, or timed out.
+ */
+export function loadTelegramWebApp(timeoutMs = 10_000): Promise<void> {
+  if (!isTelegramLaunch(location.hash, storedLaunchParams())) return Promise.resolve()
+  return new Promise((resolve) => {
+    const script = document.createElement('script')
+    script.src = webAppScript
+    script.onload = script.onerror = () => resolve()
+    setTimeout(resolve, timeoutMs)
+    document.head.append(script)
+  })
+}
+
 /**
  * Returns the Telegram platform when the app runs inside a Mini App, or null
- * otherwise. The telegram-web-app.js script defines window.Telegram.WebApp in
- * any browser, so the presence of signed initData is what tells them apart.
+ * otherwise (also when telegram-web-app.js did not load). Call it after
+ * loadTelegramWebApp.
  */
 export function createTelegramPlatform(): Platform | null {
   const app = window.Telegram?.WebApp
@@ -115,4 +159,64 @@ export function createTelegramPlatform(): Platform | null {
       return new Promise((resolve) => request.call(app, resolve))
     },
   }
+}
+
+const oauthOrigin = 'https://oauth.telegram.org'
+const authResultParam = /[#?&]tgAuthResult=([A-Za-z0-9_=-]*)$/
+
+/**
+ * Leaves for Telegram's sign-in page in the same tab (no third-party script,
+ * no popup to be blocked). Telegram comes back to this page with the signed
+ * fields in the hash; takeTelegramAuthResult reads them. Also asks to let the
+ * bot write to the user, so that reminders reach them.
+ */
+export function startTelegramLogin(botId: number): void {
+  location.assign(telegramLoginUrl(botId, location.href))
+}
+
+/** Address of Telegram's sign-in page that comes back to returnTo. */
+export function telegramLoginUrl(botId: number, returnTo: string): string {
+  const back = new URL(returnTo)
+  back.hash = ''
+  const params = new URLSearchParams({
+    bot_id: String(botId),
+    origin: back.origin,
+    request_access: 'write',
+    lang: 'ru',
+    return_to: back.href,
+  })
+  return `${oauthOrigin}/auth?${params}`
+}
+
+let authResult: TelegramAuthData | null | undefined
+
+/**
+ * The fields Telegram returned in the hash (#tgAuthResult=<base64url JSON>),
+ * or null. The hash is removed on the first call; later calls return the
+ * same value until clearTelegramAuthResult.
+ */
+export function takeTelegramAuthResult(): TelegramAuthData | null {
+  if (authResult !== undefined) return authResult
+  authResult = null
+  const match = authResultParam.exec(location.hash)
+  if (!match) return null
+  history.replaceState(history.state, '', location.href.replace(/#.*$/, ''))
+  try {
+    let data = (match[1] ?? '').replace(/-/g, '+').replace(/_/g, '/')
+    while (data.length % 4) data += '='
+    const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
+    const fields = JSON.parse(new TextDecoder().decode(bytes)) as
+      Record<string, string | number> | false
+    // The server checks the signature over the fields exactly as sent.
+    if (fields) {
+      authResult = Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, String(v)]))
+    }
+  } catch {
+    // Not something Telegram produced; ignore it.
+  }
+  return authResult
+}
+
+export function clearTelegramAuthResult(): void {
+  authResult = undefined
 }

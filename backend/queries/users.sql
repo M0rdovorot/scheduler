@@ -24,8 +24,10 @@ INSERT INTO user_identities (user_id, provider, provider_user_id, username, firs
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: UpdateIdentityProfile :exec
+-- The Login Widget does not report the language, so a missing one is kept.
 UPDATE user_identities
-SET username = $2, first_name = $3, last_name = $4, photo_url = $5, language_code = $6
+SET username = $2, first_name = $3, last_name = $4, photo_url = $5,
+    language_code = COALESCE(sqlc.narg(language_code), language_code)
 WHERE id = $1;
 
 -- name: UpdateUserDisplayName :exec

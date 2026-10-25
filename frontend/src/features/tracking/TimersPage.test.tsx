@@ -47,6 +47,7 @@ const timer = (id: string, title: string, startedAt: string): Instance => ({
 function server(req: StubRequest): Response {
   if (req.path === '/auth/dev')
     return json(200, { token: 't', expires_at: '2030-01-01T00:00:00Z', user })
+  if (req.method === 'GET' && req.path === '/me') return json(200, user)
   if (req.method === 'GET' && req.path === '/instances/running') {
     return json(
       200,

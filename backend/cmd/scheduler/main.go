@@ -64,7 +64,8 @@ func run() error {
 	habits := habit.NewService(st)
 	reminders := reminder.NewService(st, tasks, habits, nil, log)
 	api := httpapi.NewServer(httpapi.Deps{
-		DB: st,
+		DB:            st,
+		SecureCookies: !cfg.IsDev(),
 		Auth: auth.NewService(st, auth.Config{
 			BotToken:       cfg.BotToken,
 			DevAuth:        cfg.DevAuth,

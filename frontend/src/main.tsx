@@ -9,7 +9,7 @@ import { PlatformContext } from '@/platform/context'
 import { applyTheme } from '@/platform/theme'
 import './index.css'
 
-const platform = detectPlatform()
+const platform = await detectPlatform()
 platform.init()
 applyTheme(platform.getTheme())
 platform.onThemeChange(applyTheme)

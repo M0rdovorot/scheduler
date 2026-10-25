@@ -7,6 +7,7 @@ servers:
   - url: /api/v1
 security:
   - bearerAuth: []
+  - cookieAuth: []
 tags:
   - name: system
   - name: auth
@@ -81,6 +82,66 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+  /auth/config:
+    get:
+      operationId: getAuthConfig
+      summary: How a browser can sign in
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: Sign-in options for the web version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthConfig"
+  /auth/telegram-widget:
+    post:
+      operationId: loginTelegramWidget
+      summary: Sign in on the web with the Telegram Login Widget
+      description: |
+        Verifies the signature and freshness of the data the widget returned.
+        This is the same account as in the Mini App. The session goes to an
+        httpOnly cookie, not to the response body. The account is created on
+        the first sign-in; `timezone` is used only then.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramWidgetLoginRequest"
+      responses:
+        "200":
+          description: Signed in; the session cookie is set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: End the current session
+      description: Deletes the session and clears the session cookie.
+      tags: [auth]
+      responses:
+        "204":
+          description: Signed out
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /me:
     get:
       operationId: getMe
@@ -1030,7 +1091,14 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Session token from `/auth/telegram`.
+      description: Session token from `/auth/telegram` (the Mini App).
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: |
+        Session cookie from `/auth/telegram-widget` (the web version).
+        Requests that change data must come from the same origin.
   responses:
     SessionIssued:
       description: Session token and the signed-in user
@@ -1088,6 +1156,38 @@ components:
           type: string
           description: IANA time zone of the device
           example: Europe/Moscow
+    TelegramWidgetLoginRequest:
+      type: object
+      required: [auth_data, timezone]
+      properties:
+        auth_data:
+          type: object
+          description: |
+            Every field the widget returned (`id`, `first_name`, `auth_date`,
+            `hash`, …), as strings and unchanged: the signature covers them all.
+          additionalProperties:
+            type: string
+        timezone:
+          type: string
+          description: IANA time zone of the device
+          example: Europe/Moscow
+    AuthConfig:
+      type: object
+      required: [telegram_bot_id]
+      properties:
+        telegram_bot_id:
+          type: integer
+          format: int64
+          description: Bot for `Telegram.Login.auth`; 0 when Telegram sign-in is unavailable
+    WebSession:
+      type: object
+      required: [expires_at, user]
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/User"
     DevLoginRequest:
       type: object
       required: [timezone]

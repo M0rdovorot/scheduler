@@ -71,8 +71,11 @@ func (s *Service) LoginTelegram(ctx context.Context, initData, timezone string) 
 	if err != nil {
 		return Session{}, err
 	}
-	u := data.User
-	return s.login(ctx, identity{
+	return s.login(ctx, telegramIdentity(data.User), timezone)
+}
+
+func telegramIdentity(u TelegramUser) identity {
+	return identity{
 		provider:     providerTelegram,
 		providerID:   strconv.FormatInt(u.ID, 10),
 		displayName:  telegramDisplayName(u),
@@ -81,7 +84,32 @@ func (s *Service) LoginTelegram(ctx context.Context, initData, timezone string) 
 		lastName:     nonEmpty(u.LastName),
 		photoURL:     nonEmpty(u.PhotoURL),
 		languageCode: nonEmpty(u.LanguageCode),
-	}, timezone)
+	}
+}
+
+// LoginTelegramWidget signs a user in on the web with the fields the Telegram
+// Login Widget returned. It is the same account as in the Mini App.
+func (s *Service) LoginTelegramWidget(ctx context.Context, fields map[string]string, timezone string) (Session, error) {
+	if s.cfg.BotToken == "" {
+		// Anyone could sign data with an empty key.
+		return Session{}, fmt.Errorf("%w: no bot token", ErrInvalidInitData)
+	}
+	u, err := VerifyWidgetData(fields, s.cfg.BotToken, s.cfg.InitDataMaxAge, s.now())
+	if err != nil {
+		return Session{}, err
+	}
+	return s.login(ctx, telegramIdentity(u), timezone)
+}
+
+// BotID is the id of the bot for the Telegram sign-in popup; 0 without a token.
+func (s *Service) BotID() int64 { return BotID(s.cfg.BotToken) }
+
+// Logout deletes the session with this token. An unknown token is not an error.
+func (s *Service) Logout(ctx context.Context, token string) error {
+	if err := s.store.DeleteSession(ctx, hashToken(token)); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return nil
 }
 
 // LoginDev signs in without Telegram. Available only when DEV_AUTH is on.

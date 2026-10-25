@@ -116,7 +116,8 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 
 const updateIdentityProfile = `-- name: UpdateIdentityProfile :exec
 UPDATE user_identities
-SET username = $2, first_name = $3, last_name = $4, photo_url = $5, language_code = $6
+SET username = $2, first_name = $3, last_name = $4, photo_url = $5,
+    language_code = COALESCE($6, language_code)
 WHERE id = $1
 `
 
@@ -129,6 +130,7 @@ type UpdateIdentityProfileParams struct {
 	LanguageCode *string
 }
 
+// The Login Widget does not report the language, so a missing one is kept.
 func (q *Queries) UpdateIdentityProfile(ctx context.Context, arg UpdateIdentityProfileParams) error {
 	_, err := q.db.Exec(ctx, updateIdentityProfile,
 		arg.ID,
