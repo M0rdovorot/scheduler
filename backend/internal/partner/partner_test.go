@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m0rdovorot/scheduler/backend/internal/habit"
 	"github.com/m0rdovorot/scheduler/backend/internal/partner"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
+	"github.com/m0rdovorot/scheduler/backend/internal/task"
 	"github.com/m0rdovorot/scheduler/backend/internal/testutil"
 	"github.com/m0rdovorot/scheduler/backend/migrations"
 )
@@ -17,7 +20,10 @@ import (
 type env struct {
 	t       *testing.T
 	svc     *partner.Service
+	tasks   *task.Service
+	habits  *habit.Service
 	st      *store.Store
+	pool    *pgxpool.Pool
 	a, b, c uuid.UUID
 	now     time.Time
 }
@@ -27,15 +33,19 @@ func newEnv(t *testing.T) *env {
 	pool := testutil.NewDB(t, migrations.FS)
 	st := store.NewStore(pool)
 	mk := func(name string) uuid.UUID {
-		u, err := st.CreateUser(context.Background(), store.CreateUserParams{DisplayName: name, Timezone: "UTC"})
+		u, err := st.CreateUser(context.Background(), store.CreateUserParams{DisplayName: name, Timezone: "Europe/Moscow"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return u.ID
 	}
-	e := &env{t: t, st: st, a: mk("Anna"), b: mk("Boris"), c: mk("Clara"), now: time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)}
-	e.svc = partner.NewService(st)
-	e.svc.SetClock(func() time.Time { return e.now })
+	e := &env{t: t, st: st, pool: pool, a: mk("Anna"), b: mk("Boris"), c: mk("Clara"), now: time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)}
+	e.tasks, e.habits = task.NewService(st), habit.NewService(st)
+	e.svc = partner.NewService(st, e.tasks)
+	clock := func() time.Time { return e.now }
+	e.svc.SetClock(clock)
+	e.tasks.SetClock(clock)
+	e.habits.SetClock(clock)
 	return e
 }
 

@@ -3,8 +3,12 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/m0rdovorot/scheduler/backend/internal/partner"
+	"github.com/m0rdovorot/scheduler/backend/internal/validation"
 )
 
 func (s *Server) ListPartners(ctx context.Context, _ ListPartnersRequestObject) (ListPartnersResponseObject, error) {
@@ -77,4 +81,48 @@ func toPartner(p partner.Partner) Partner {
 		Id: p.ID, DisplayName: p.DisplayName, CreatedAt: p.CreatedAt,
 		TasksShared: p.TasksShared, HabitsShared: p.HabitsShared,
 	}
+}
+
+func (s *Server) GetPartnerBusy(ctx context.Context, req GetPartnerBusyRequestObject) (GetPartnerBusyResponseObject, error) {
+	blocks, err := s.Partners.Busy(ctx, userID(ctx), req.Id, req.Params.From, req.Params.To)
+	var verr *validation.Error
+	switch {
+	case errors.As(err, &verr):
+		return GetPartnerBusy400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, partner.ErrNotFound):
+		return GetPartnerBusy404JSONResponse{NotFoundJSONResponse(partnerNotFound())}, nil
+	case err != nil:
+		return nil, err
+	}
+	out := make(GetPartnerBusy200JSONResponse, len(blocks))
+	for i, b := range blocks {
+		out[i] = BusyBlock{Start: b.Start, End: b.End, Title: b.Title}
+	}
+	return out, nil
+}
+
+func (s *Server) GetFreeTime(ctx context.Context, req GetFreeTimeRequestObject) (GetFreeTimeResponseObject, error) {
+	var with []uuid.UUID
+	if req.Params.With != nil {
+		with = *req.Params.With
+	}
+	minLen := time.Minute
+	if m := req.Params.MinMinutes; m != nil {
+		minLen = time.Duration(*m) * time.Minute
+	}
+	free, err := s.Partners.FreeTime(ctx, userID(ctx), with, req.Params.From, req.Params.To, minLen)
+	var verr *validation.Error
+	switch {
+	case errors.As(err, &verr):
+		return GetFreeTime400JSONResponse{BadRequestJSONResponse(validationError(verr))}, nil
+	case errors.Is(err, partner.ErrNotFound):
+		return GetFreeTime404JSONResponse{NotFoundJSONResponse(partnerNotFound())}, nil
+	case err != nil:
+		return nil, err
+	}
+	out := make(GetFreeTime200JSONResponse, len(free))
+	for i, f := range free {
+		out[i] = FreeInterval{Start: f.Start, End: f.End}
+	}
+	return out, nil
 }

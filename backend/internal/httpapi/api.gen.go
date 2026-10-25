@@ -439,6 +439,15 @@ type AuthConfig struct {
 	TelegramBotId int64 `json:"telegram_bot_id"`
 }
 
+// BusyBlock defines model for BusyBlock.
+type BusyBlock struct {
+	End   time.Time `json:"end"`
+	Start time.Time `json:"start"`
+
+	// Title Null where the viewer may not see it
+	Title *string `json:"title"`
+}
+
 // Category defines model for Category.
 type Category struct {
 	ArchivedAt *time.Time `json:"archived_at"`
@@ -537,6 +546,12 @@ type Error struct {
 	// Field Name of the invalid request field, if any
 	Field   *string `json:"field,omitempty"`
 	Message string  `json:"message"`
+}
+
+// FreeInterval defines model for FreeInterval.
+type FreeInterval struct {
+	End   time.Time `json:"end"`
+	Start time.Time `json:"start"`
 }
 
 // GlobalReminders defines model for GlobalReminders.
@@ -1084,6 +1099,18 @@ type SessionIssued = Session
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// GetFreeTimeParams defines parameters for GetFreeTime.
+type GetFreeTimeParams struct {
+	From time.Time `form:"from" json:"from"`
+	To   time.Time `form:"to" json:"to"`
+
+	// With Partners to plan with (at most 20); empty means only the user
+	With *[]openapi_types.UUID `form:"with,omitempty" json:"with,omitempty"`
+
+	// MinMinutes Shorter stretches are left out
+	MinMinutes *int `form:"min_minutes,omitempty" json:"min_minutes,omitempty"`
+}
+
 // GetHabitStatsParams defines parameters for GetHabitStats.
 type GetHabitStatsParams struct {
 	From openapi_types.Date `form:"from" json:"from"`
@@ -1117,6 +1144,12 @@ type UpdateInstanceParams struct {
 
 // UpdateInstanceParamsScope defines parameters for UpdateInstance.
 type UpdateInstanceParamsScope string
+
+// GetPartnerBusyParams defines parameters for GetPartnerBusy.
+type GetPartnerBusyParams struct {
+	From time.Time `form:"from" json:"from"`
+	To   time.Time `form:"to" json:"to"`
+}
 
 // GetStatsParams defines parameters for GetStats.
 type GetStatsParams struct {
@@ -1222,6 +1255,9 @@ type ServerInterface interface {
 	// UnarchiveCategory Restore one archived category
 	// (POST /categories/{id}/unarchive)
 	UnarchiveCategory(w http.ResponseWriter, r *http.Request, id CategoryId)
+	// GetFreeTime Free time shared by the user and chosen partners
+	// (GET /free-time)
+	GetFreeTime(w http.ResponseWriter, r *http.Request, params GetFreeTimeParams)
 	// ListHabits All habits of the user, archived ones included
 	// (GET /habits)
 	ListHabits(w http.ResponseWriter, r *http.Request)
@@ -1312,6 +1348,9 @@ type ServerInterface interface {
 	// SetPartnerAccess Give or take back access for a partner
 	// (PUT /partners/{id}/access)
 	SetPartnerAccess(w http.ResponseWriter, r *http.Request, id PartnerId)
+	// GetPartnerBusy The busy time of a partner
+	// (GET /partners/{id}/busy)
+	GetPartnerBusy(w http.ResponseWriter, r *http.Request, id PartnerId, params GetPartnerBusyParams)
 	// GetGlobalReminders The master switch, the quiet hours and the default reminders
 	// (GET /reminders/global)
 	GetGlobalReminders(w http.ResponseWriter, r *http.Request)
@@ -1411,6 +1450,12 @@ func (_ Unimplemented) MoveCategory(w http.ResponseWriter, r *http.Request, id C
 // UnarchiveCategory Restore one archived category
 // (POST /categories/{id}/unarchive)
 func (_ Unimplemented) UnarchiveCategory(w http.ResponseWriter, r *http.Request, id CategoryId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFreeTime Free time shared by the user and chosen partners
+// (GET /free-time)
+func (_ Unimplemented) GetFreeTime(w http.ResponseWriter, r *http.Request, params GetFreeTimeParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1591,6 +1636,12 @@ func (_ Unimplemented) RemovePartner(w http.ResponseWriter, r *http.Request, id 
 // SetPartnerAccess Give or take back access for a partner
 // (PUT /partners/{id}/access)
 func (_ Unimplemented) SetPartnerAccess(w http.ResponseWriter, r *http.Request, id PartnerId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPartnerBusy The busy time of a partner
+// (GET /partners/{id}/busy)
+func (_ Unimplemented) GetPartnerBusy(w http.ResponseWriter, r *http.Request, id PartnerId, params GetPartnerBusyParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1870,6 +1921,78 @@ func (siw *ServerInterfaceWrapper) UnarchiveCategory(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UnarchiveCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFreeTime operation middleware
+func (siw *ServerInterfaceWrapper) GetFreeTime(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFreeTimeParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "with" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "with", r.URL.Query(), &params.With, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "with"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "with", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "min_minutes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "min_minutes", r.URL.Query(), &params.MinMinutes, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "min_minutes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "min_minutes", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFreeTime(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2617,6 +2740,61 @@ func (siw *ServerInterfaceWrapper) SetPartnerAccess(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetPartnerBusy operation middleware
+func (siw *ServerInterfaceWrapper) GetPartnerBusy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PartnerId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPartnerBusyParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPartnerBusy(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGlobalReminders operation middleware
 func (siw *ServerInterfaceWrapper) GetGlobalReminders(w http.ResponseWriter, r *http.Request) {
 
@@ -3098,6 +3276,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/partners/{id}/access", wrapper.SetPartnerAccess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/partners/{id}/busy", wrapper.GetPartnerBusy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/free-time", wrapper.GetFreeTime)
 	})
 
 	return r
@@ -3691,6 +3875,70 @@ func (response UnarchiveCategory401JSONResponse) VisitUnarchiveCategoryResponse(
 type UnarchiveCategory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UnarchiveCategory404JSONResponse) VisitUnarchiveCategoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFreeTimeRequestObject struct {
+	Params GetFreeTimeParams
+}
+
+type GetFreeTimeResponseObject interface {
+	VisitGetFreeTimeResponse(w http.ResponseWriter) error
+}
+
+type GetFreeTime200JSONResponse []FreeInterval
+
+func (response GetFreeTime200JSONResponse) VisitGetFreeTimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFreeTime400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetFreeTime400JSONResponse) VisitGetFreeTimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFreeTime401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFreeTime401JSONResponse) VisitGetFreeTimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFreeTime404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFreeTime404JSONResponse) VisitGetFreeTimeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5302,6 +5550,71 @@ func (response SetPartnerAccess404JSONResponse) VisitSetPartnerAccessResponse(w 
 	return err
 }
 
+type GetPartnerBusyRequestObject struct {
+	Id     PartnerId `json:"id"`
+	Params GetPartnerBusyParams
+}
+
+type GetPartnerBusyResponseObject interface {
+	VisitGetPartnerBusyResponse(w http.ResponseWriter) error
+}
+
+type GetPartnerBusy200JSONResponse []BusyBlock
+
+func (response GetPartnerBusy200JSONResponse) VisitGetPartnerBusyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPartnerBusy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetPartnerBusy400JSONResponse) VisitGetPartnerBusyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPartnerBusy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetPartnerBusy401JSONResponse) VisitGetPartnerBusyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPartnerBusy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPartnerBusy404JSONResponse) VisitGetPartnerBusyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGlobalRemindersRequestObject struct {
 }
 
@@ -5743,6 +6056,9 @@ type StrictServerInterface interface {
 	// UnarchiveCategory Restore one archived category
 	// (POST /categories/{id}/unarchive)
 	UnarchiveCategory(ctx context.Context, request UnarchiveCategoryRequestObject) (UnarchiveCategoryResponseObject, error)
+	// GetFreeTime Free time shared by the user and chosen partners
+	// (GET /free-time)
+	GetFreeTime(ctx context.Context, request GetFreeTimeRequestObject) (GetFreeTimeResponseObject, error)
 	// ListHabits All habits of the user, archived ones included
 	// (GET /habits)
 	ListHabits(ctx context.Context, request ListHabitsRequestObject) (ListHabitsResponseObject, error)
@@ -5833,6 +6149,9 @@ type StrictServerInterface interface {
 	// SetPartnerAccess Give or take back access for a partner
 	// (PUT /partners/{id}/access)
 	SetPartnerAccess(ctx context.Context, request SetPartnerAccessRequestObject) (SetPartnerAccessResponseObject, error)
+	// GetPartnerBusy The busy time of a partner
+	// (GET /partners/{id}/busy)
+	GetPartnerBusy(ctx context.Context, request GetPartnerBusyRequestObject) (GetPartnerBusyResponseObject, error)
 	// GetGlobalReminders The master switch, the quiet hours and the default reminders
 	// (GET /reminders/global)
 	GetGlobalReminders(ctx context.Context, request GetGlobalRemindersRequestObject) (GetGlobalRemindersResponseObject, error)
@@ -6231,6 +6550,32 @@ func (sh *strictHandler) UnarchiveCategory(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UnarchiveCategoryResponseObject); ok {
 		if err := validResponse.VisitUnarchiveCategoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFreeTime operation middleware
+func (sh *strictHandler) GetFreeTime(w http.ResponseWriter, r *http.Request, params GetFreeTimeParams) {
+	var request GetFreeTimeRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFreeTime(ctx, request.(GetFreeTimeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFreeTime")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFreeTimeResponseObject); ok {
+		if err := validResponse.VisitGetFreeTimeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7070,6 +7415,33 @@ func (sh *strictHandler) SetPartnerAccess(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetPartnerAccessResponseObject); ok {
 		if err := validResponse.VisitSetPartnerAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPartnerBusy operation middleware
+func (sh *strictHandler) GetPartnerBusy(w http.ResponseWriter, r *http.Request, id PartnerId, params GetPartnerBusyParams) {
+	var request GetPartnerBusyRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPartnerBusy(ctx, request.(GetPartnerBusyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPartnerBusy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPartnerBusyResponseObject); ok {
+		if err := validResponse.VisitGetPartnerBusyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

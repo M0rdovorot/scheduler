@@ -1156,6 +1156,106 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /partners/{id}/busy:
+    parameters:
+      - $ref: "#/components/parameters/PartnerId"
+    get:
+      operationId: getPartnerBusy
+      summary: The busy time of a partner
+      description: |
+        The time the partner spends within `[from, to)`: the fact of a marked task, the plan of
+        the others (a running timer lasts until now). Rescheduled, cancelled and not-done tasks
+        take no time. A block has a `title` only where the partner has allowed it for the user
+        (task visibility, access to tasks, access to habits); otherwise it is `null` and the
+        block only says "busy". Nothing else of the task is shown. The window is at most 100 days.
+        A user who is not a partner is `404`.
+      tags: [partners]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Busy blocks, ordered by start
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BusyBlock"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /free-time:
+    get:
+      operationId: getFreeTime
+      summary: Free time shared by the user and chosen partners
+      description: |
+        The stretches of `[from, to)` in which the user and every partner in `with` are all free,
+        by the same rules as the busy time. Overlapping busy time is counted once. The window is
+        at most 100 days. A user in `with` who is not a partner is `404`.
+      tags: [partners]
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: with
+          in: query
+          required: false
+          description: Partners to plan with (at most 20); empty means only the user
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              type: string
+              format: uuid
+          style: form
+          explode: true
+        - name: min_minutes
+          in: query
+          required: false
+          description: Shorter stretches are left out
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1440
+            default: 1
+      responses:
+        "200":
+          description: Free stretches, in time order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FreeInterval"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   parameters:
     PartnerId:
@@ -2204,3 +2304,27 @@ components:
           type: boolean
         habits:
           type: boolean
+    BusyBlock:
+      type: object
+      required: [start, end, title]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        title:
+          type: string
+          nullable: true
+          description: Null where the viewer may not see it
+    FreeInterval:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time

@@ -52,11 +52,12 @@ type AccessPatch struct {
 
 type Service struct {
 	store *store.Store
+	tasks Materializer
 	now   func() time.Time
 }
 
-func NewService(s *store.Store) *Service {
-	return &Service{store: s, now: time.Now}
+func NewService(s *store.Store, tasks Materializer) *Service {
+	return &Service{store: s, tasks: tasks, now: time.Now}
 }
 
 // SetClock replaces the clock; for tests.

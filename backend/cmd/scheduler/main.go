@@ -79,7 +79,7 @@ func run() error {
 		Stats:      stats.NewService(tasks, categories, users),
 		Habits:     habits,
 		Reminders:  reminders,
-		Partners:   partner.NewService(st),
+		Partners:   partner.NewService(st, tasks),
 	})
 
 	if cfg.BotEnabled {

@@ -52,7 +52,7 @@ func newTestAPI(t *testing.T, devAuth bool) *testAPI {
 		Stats:      stats.NewService(tasks, categories, users),
 		Habits:     habit.NewService(st),
 		Reminders:  reminder.NewService(st, tasks, habit.NewService(st), nil, nil),
-		Partners:   partner.NewService(st),
+		Partners:   partner.NewService(st, tasks),
 	})
 	return &testAPI{t: t, handler: NewRouter(srv, slog.New(slog.NewTextHandler(io.Discard, nil)))}
 }

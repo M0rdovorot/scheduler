@@ -97,6 +97,32 @@ func (q *Queries) DeletePartnership(ctx context.Context, arg DeletePartnershipPa
 	return result.RowsAffected(), nil
 }
 
+const getAccessGiven = `-- name: GetAccessGiven :one
+SELECT
+    EXISTS (SELECT 1 FROM task_access_grants t
+            WHERE t.owner_id = $1 AND t.grantee_id = $2) AS tasks,
+    EXISTS (SELECT 1 FROM habit_access_grants h
+            WHERE h.owner_id = $1 AND h.grantee_id = $2) AS habits
+`
+
+type GetAccessGivenParams struct {
+	OwnerID   uuid.UUID
+	GranteeID uuid.UUID
+}
+
+type GetAccessGivenRow struct {
+	Tasks  bool
+	Habits bool
+}
+
+// What `owner` has given to `grantee`: access to task titles and to habits.
+func (q *Queries) GetAccessGiven(ctx context.Context, arg GetAccessGivenParams) (GetAccessGivenRow, error) {
+	row := q.db.QueryRow(ctx, getAccessGiven, arg.OwnerID, arg.GranteeID)
+	var i GetAccessGivenRow
+	err := row.Scan(&i.Tasks, &i.Habits)
+	return i, err
+}
+
 const grantHabitAccess = `-- name: GrantHabitAccess :exec
 INSERT INTO habit_access_grants (owner_id, grantee_id) VALUES ($1, $2)
 ON CONFLICT DO NOTHING
@@ -125,6 +151,71 @@ type GrantTaskAccessParams struct {
 func (q *Queries) GrantTaskAccess(ctx context.Context, arg GrantTaskAccessParams) error {
 	_, err := q.db.Exec(ctx, grantTaskAccess, arg.OwnerID, arg.GranteeID)
 	return err
+}
+
+const listBusy = `-- name: ListBusy :many
+WITH busy AS (
+    SELECT d.title, d.visibility, d.habit_id,
+           CAST(COALESCE(d.actual_start, d.planned_start) AS timestamptz) AS starts_at,
+           CAST(CASE WHEN d.actual_start IS NOT NULL
+                     THEN GREATEST(COALESCE(d.actual_end, $3::timestamptz), d.actual_start)
+                     ELSE d.planned_end END AS timestamptz) AS ends_at
+    FROM instance_details d
+    WHERE d.user_id = $4 AND d.status NOT IN ('rescheduled', 'cancelled', 'not_done')
+)
+SELECT title, visibility, habit_id, starts_at, ends_at
+FROM busy
+WHERE ends_at > starts_at AND starts_at < $1::timestamptz AND ends_at > $2::timestamptz
+ORDER BY starts_at, ends_at
+`
+
+type ListBusyParams struct {
+	RangeTo   time.Time
+	RangeFrom time.Time
+	Now       time.Time
+	UserID    uuid.UUID
+}
+
+type ListBusyRow struct {
+	Title      string
+	Visibility string
+	HabitID    uuid.NullUUID
+	StartsAt   time.Time
+	EndsAt     time.Time
+}
+
+// The time the user spends in [range_from, range_to): the fact of a marked task (a running
+// timer lasts until `now`), the plan of the others. Rescheduled, cancelled and not done tasks
+// take no time. The title is for the service to show or hide.
+func (q *Queries) ListBusy(ctx context.Context, arg ListBusyParams) ([]ListBusyRow, error) {
+	rows, err := q.db.Query(ctx, listBusy,
+		arg.RangeTo,
+		arg.RangeFrom,
+		arg.Now,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBusyRow
+	for rows.Next() {
+		var i ListBusyRow
+		if err := rows.Scan(
+			&i.Title,
+			&i.Visibility,
+			&i.HabitID,
+			&i.StartsAt,
+			&i.EndsAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPartners = `-- name: ListPartners :many

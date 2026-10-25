@@ -50,3 +50,29 @@ ON CONFLICT DO NOTHING;
 
 -- name: RevokeHabitAccess :exec
 DELETE FROM habit_access_grants WHERE owner_id = $1 AND grantee_id = $2;
+
+-- name: GetAccessGiven :one
+-- What `owner` has given to `grantee`: access to task titles and to habits.
+SELECT
+    EXISTS (SELECT 1 FROM task_access_grants t
+            WHERE t.owner_id = @owner_id AND t.grantee_id = @grantee_id) AS tasks,
+    EXISTS (SELECT 1 FROM habit_access_grants h
+            WHERE h.owner_id = @owner_id AND h.grantee_id = @grantee_id) AS habits;
+
+-- name: ListBusy :many
+-- The time the user spends in [range_from, range_to): the fact of a marked task (a running
+-- timer lasts until `now`), the plan of the others. Rescheduled, cancelled and not done tasks
+-- take no time. The title is for the service to show or hide.
+WITH busy AS (
+    SELECT d.title, d.visibility, d.habit_id,
+           CAST(COALESCE(d.actual_start, d.planned_start) AS timestamptz) AS starts_at,
+           CAST(CASE WHEN d.actual_start IS NOT NULL
+                     THEN GREATEST(COALESCE(d.actual_end, @now::timestamptz), d.actual_start)
+                     ELSE d.planned_end END AS timestamptz) AS ends_at
+    FROM instance_details d
+    WHERE d.user_id = @user_id AND d.status NOT IN ('rescheduled', 'cancelled', 'not_done')
+)
+SELECT title, visibility, habit_id, starts_at, ends_at
+FROM busy
+WHERE ends_at > starts_at AND starts_at < @range_to::timestamptz AND ends_at > @range_from::timestamptz
+ORDER BY starts_at, ends_at;

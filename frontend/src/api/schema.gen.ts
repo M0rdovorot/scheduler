@@ -874,6 +874,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/partners/{id}/busy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The busy time of a partner
+         * @description The time the partner spends within `[from, to)`: the fact of a marked task, the plan of
+         *     the others (a running timer lasts until now). Rescheduled, cancelled and not-done tasks
+         *     take no time. A block has a `title` only where the partner has allowed it for the user
+         *     (task visibility, access to tasks, access to habits); otherwise it is `null` and the
+         *     block only says "busy". Nothing else of the task is shown. The window is at most 100 days.
+         *     A user who is not a partner is `404`.
+         */
+        get: operations["getPartnerBusy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/free-time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Free time shared by the user and chosen partners
+         * @description The stretches of `[from, to)` in which the user and every partner in `with` are all free,
+         *     by the same rules as the busy time. Overlapping busy time is counted once. The window is
+         *     at most 100 days. A user in `with` who is not a partner is `404`.
+         */
+        get: operations["getFreeTime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1408,6 +1457,20 @@ export interface components {
         PartnerAccess: {
             tasks?: boolean;
             habits?: boolean;
+        };
+        BusyBlock: {
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
+            /** @description Null where the viewer may not see it */
+            title: string | null;
+        };
+        FreeInterval: {
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
         };
     };
     responses: {
@@ -2725,6 +2788,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Partner"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPartnerBusy: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["PartnerId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Busy blocks, ordered by start */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusyBlock"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getFreeTime: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                /** @description Partners to plan with (at most 20); empty means only the user */
+                with?: string[];
+                /** @description Shorter stretches are left out */
+                min_minutes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Free stretches, in time order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreeInterval"][];
                 };
             };
             400: components["responses"]["BadRequest"];
