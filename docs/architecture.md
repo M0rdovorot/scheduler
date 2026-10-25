@@ -194,6 +194,7 @@
 - **partner_invites** — `token`, `inviter_id`, `expires_at`, `accepted_by`, `accepted_at`.
 - **partnerships** — пара пользователей, взаимная связь; создаётся, когда приглашение принято.
 - **task_access_grants** — `owner_id`, `grantee_id`. Односторонний доступ к названиям дел владельца.
+- **habit_access_grants** — `owner_id`, `grantee_id`. Отдельный односторонний доступ к привычкам владельца (FR-11.8); без него партнёр привычек не видит.
 - Поле `visibility` у `task_series` и `task_instances`: `partners` | `granted` | `private`. Приватность по умолчанию хранится в настройках пользователя.
 - Что видит партнёр:
   - `private` → «занят»;
