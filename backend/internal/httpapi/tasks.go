@@ -38,6 +38,7 @@ func (s *Server) CreateTask(ctx context.Context, req CreateTaskRequestObject) (C
 	if b.Recurrence != nil {
 		in.Recurrence = &b.Recurrence.Rrule
 	}
+	in.Visibility = visibilityPtr(b.Visibility)
 
 	created, err := s.Tasks.Create(ctx, userID(ctx), in)
 	var verr *validation.Error
@@ -63,6 +64,7 @@ func (s *Server) UpdateInstance(ctx context.Context, req UpdateInstanceRequestOb
 	if b.Recurrence != nil {
 		in.Recurrence = &b.Recurrence.Rrule
 	}
+	in.Visibility = visibilityPtr(b.Visibility)
 
 	updated, err := s.Tasks.Update(ctx, userID(ctx), req.Id, scope, in)
 	var verr *validation.Error
@@ -127,6 +129,13 @@ func scopeError() Error {
 
 func ptrTo[T any](v T) *T { return &v }
 
+func visibilityPtr(v *Visibility) *string {
+	if v == nil {
+		return nil
+	}
+	return ptrTo(string(*v))
+}
+
 func toInstance(in task.Instance) Instance {
 	ids := in.CategoryIDs
 	if ids == nil {
@@ -141,6 +150,7 @@ func toInstance(in task.Instance) Instance {
 		PlannedStart: in.PlannedStart, PlannedEnd: in.PlannedEnd,
 		ActualStart: in.ActualStart, ActualEnd: in.ActualEnd,
 		Status: InstanceStatus(in.Status), Comment: in.Comment, CategoryIds: ids, SeriesId: in.SeriesID, HabitId: in.HabitID,
+		Visibility:      Visibility(in.Visibility),
 		RescheduledFrom: toLink(in.RescheduledFrom), RescheduledTo: toLink(in.RescheduledTo),
 		Deviations: deviations,
 	}

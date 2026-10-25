@@ -44,7 +44,7 @@ func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (display_name, timezone)
 VALUES ($1, $2)
-RETURNING id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at
+RETURNING id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at, default_visibility
 `
 
 type CreateUserParams struct {
@@ -63,6 +63,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DefaultView,
 		&i.DeviationThresholdMinutes,
 		&i.CreatedAt,
+		&i.DefaultVisibility,
 	)
 	return i, err
 }
@@ -96,7 +97,7 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (UserI
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at FROM users WHERE id = $1
+SELECT id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at, default_visibility FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
@@ -110,6 +111,7 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.DefaultView,
 		&i.DeviationThresholdMinutes,
 		&i.CreatedAt,
+		&i.DefaultVisibility,
 	)
 	return i, err
 }
@@ -162,9 +164,10 @@ UPDATE users
 SET timezone                    = COALESCE($1, timezone),
     slot_minutes                = COALESCE($2, slot_minutes),
     default_view                = COALESCE($3, default_view),
-    deviation_threshold_minutes = COALESCE($4, deviation_threshold_minutes)
-WHERE id = $5
-RETURNING id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at
+    deviation_threshold_minutes = COALESCE($4, deviation_threshold_minutes),
+    default_visibility          = COALESCE($5, default_visibility)
+WHERE id = $6
+RETURNING id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, created_at, default_visibility
 `
 
 type UpdateUserSettingsParams struct {
@@ -172,6 +175,7 @@ type UpdateUserSettingsParams struct {
 	SlotMinutes               *int32
 	DefaultView               *string
 	DeviationThresholdMinutes *int32
+	DefaultVisibility         *string
 	ID                        uuid.UUID
 }
 
@@ -181,6 +185,7 @@ func (q *Queries) UpdateUserSettings(ctx context.Context, arg UpdateUserSettings
 		arg.SlotMinutes,
 		arg.DefaultView,
 		arg.DeviationThresholdMinutes,
+		arg.DefaultVisibility,
 		arg.ID,
 	)
 	var i User
@@ -192,6 +197,7 @@ func (q *Queries) UpdateUserSettings(ctx context.Context, arg UpdateUserSettings
 		&i.DefaultView,
 		&i.DeviationThresholdMinutes,
 		&i.CreatedAt,
+		&i.DefaultVisibility,
 	)
 	return i, err
 }

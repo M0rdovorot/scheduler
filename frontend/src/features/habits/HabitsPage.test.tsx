@@ -22,6 +22,7 @@ const user: User = {
   slot_minutes: 30,
   default_view: 'day',
   deviation_threshold_minutes: 10,
+  default_visibility: 'private',
 }
 
 const habit = (over: Partial<Habit> & Pick<Habit, 'id' | 'title'>): Habit => ({

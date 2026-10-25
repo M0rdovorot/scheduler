@@ -28,6 +28,7 @@ const instance: Instance = {
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 }
 
 describe('localAt', () => {

@@ -11,7 +11,8 @@ UPDATE users
 SET timezone                    = COALESCE(sqlc.narg('timezone'), timezone),
     slot_minutes                = COALESCE(sqlc.narg('slot_minutes'), slot_minutes),
     default_view                = COALESCE(sqlc.narg('default_view'), default_view),
-    deviation_threshold_minutes = COALESCE(sqlc.narg('deviation_threshold_minutes'), deviation_threshold_minutes)
+    deviation_threshold_minutes = COALESCE(sqlc.narg('deviation_threshold_minutes'), deviation_threshold_minutes),
+    default_visibility          = COALESCE(sqlc.narg('default_visibility'), default_visibility)
 WHERE id = @id
 RETURNING *;
 

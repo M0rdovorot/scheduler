@@ -210,6 +210,7 @@ func (s *Service) createSeries(ctx context.Context, userID uuid.UUID, title stri
 		row, err := q.CreateSeries(ctx, store.CreateSeriesParams{
 			UserID: userID, Title: title, Description: in.Description, Rrule: rule.String(),
 			DtstartLocal: start, Timezone: user.Timezone, DurationMinutes: int32(duration / time.Minute),
+			Visibility: in.Visibility,
 		})
 		if err != nil {
 			return fmt.Errorf("create series: %w", err)
@@ -381,7 +382,14 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 		}
 	}
 
+	// Who sees the series does not change its occurrences, so they are not re-created
+	// (they would get new ids for nothing).
+	visibilityOnly := onlyVisibility(in)
+
 	if scope == ScopeAll || before == 0 {
+		if visibilityOnly {
+			return setSeriesVisibility(ctx, q, userID, row.ID, *in.Visibility, nil)
+		}
 		// The whole series is rewritten. Occurrences that may be rewritten are removed
 		// and come back, from the new template, when their window is asked for.
 		newRule := rule
@@ -403,6 +411,11 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 		}
 		if in.CategoryIDs != nil {
 			if err := setSeriesCategories(ctx, q, userID, row.ID, categoryIDs); err != nil {
+				return err
+			}
+		}
+		if in.Visibility != nil {
+			if err := setSeriesVisibility(ctx, q, userID, row.ID, *in.Visibility, nil); err != nil {
 				return err
 			}
 		}
@@ -449,6 +462,7 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	created, err := q.CreateSeries(ctx, store.CreateSeriesParams{
 		UserID: userID, Title: title, Description: description, Rrule: newRule.String(),
 		DtstartLocal: start, Timezone: row.Timezone, DurationMinutes: duration, HabitID: row.HabitID,
+		Visibility: cmpOr(in.Visibility, &row.Visibility),
 	})
 	if err != nil {
 		return fmt.Errorf("create series: %w", err)
@@ -462,8 +476,10 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	}); err != nil {
 		return fmt.Errorf("copy series reminders: %w", err)
 	}
-	if err := deleteRewritable(ctx, q, userID, row.ID, false, false, &at); err != nil {
-		return err
+	if !visibilityOnly {
+		if err := deleteRewritable(ctx, q, userID, row.ID, false, false, &at); err != nil {
+			return err
+		}
 	}
 	// What is left of the tail (deleted, edited and marked occurrences) now belongs to
 	// the new series, and keeps its slots there: nothing is created twice.
@@ -474,6 +490,15 @@ func updateSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, cur s
 	})
 	if err != nil {
 		return fmt.Errorf("move series instances: %w", err)
+	}
+	if in.Visibility != nil {
+		// The tail takes the new value, also where an occurrence had a value of its own.
+		err := q.ResetInstanceVisibility(ctx, store.ResetInstanceVisibilityParams{
+			SeriesID: uuid.NullUUID{UUID: created.ID, Valid: true}, UserID: userID, FromStart: &at,
+		})
+		if err != nil {
+			return fmt.Errorf("reset visibility: %w", err)
+		}
 	}
 	if tc != nil && tc.setTime {
 		return rekeySurvivors(ctx, q, userID, created.ID, loc, tc)
@@ -558,4 +583,27 @@ func deleteRewritable(ctx context.Context, q *store.Queries, userID, seriesID uu
 		return fmt.Errorf("delete series instances: %w", err)
 	}
 	return nil
+}
+
+// setSeriesVisibility sets the visibility of a series and takes the values of its own
+// off the occurrences from `from` on (all when nil).
+func setSeriesVisibility(ctx context.Context, q *store.Queries, userID, seriesID uuid.UUID, value string, from *time.Time) error {
+	if err := q.SetSeriesVisibility(ctx, store.SetSeriesVisibilityParams{ID: seriesID, UserID: userID, Visibility: value}); err != nil {
+		return fmt.Errorf("set series visibility: %w", err)
+	}
+	err := q.ResetInstanceVisibility(ctx, store.ResetInstanceVisibilityParams{
+		SeriesID: uuid.NullUUID{UUID: seriesID, Valid: true}, UserID: userID, FromStart: from,
+	})
+	if err != nil {
+		return fmt.Errorf("reset visibility: %w", err)
+	}
+	return nil
+}
+
+// cmpOr returns a if it is set, otherwise b.
+func cmpOr(a, b *string) *string {
+	if a != nil {
+		return a
+	}
+	return b
 }

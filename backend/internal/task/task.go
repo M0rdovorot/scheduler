@@ -17,6 +17,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/validation"
+	"github.com/m0rdovorot/scheduler/backend/internal/visibility"
 )
 
 const (
@@ -81,6 +82,8 @@ type Instance struct {
 	Status      string
 	Comment     string
 	CategoryIDs []uuid.UUID
+	// Visibility is who sees the title: the task's own value or the series'.
+	Visibility string
 	// SeriesID is set for occurrences of a regular task.
 	SeriesID *uuid.UUID
 	// HabitID is set for occurrences of a habit that is placed in the grid.
@@ -101,6 +104,8 @@ type CreateInput struct {
 	// Recurrence is an RRULE; when set, a regular task is created whose first
 	// occurrence slot is PlannedStart–PlannedEnd.
 	Recurrence *string
+	// Visibility defaults to the user's setting.
+	Visibility *string
 }
 
 // UpdateInput holds the fields to change; nil fields are left as is. A non-nil
@@ -113,6 +118,8 @@ type UpdateInput struct {
 	CategoryIDs  *[]uuid.UUID
 	// Recurrence replaces the repeat rule; only for ScopeFollowing and ScopeAll.
 	Recurrence *string
+	// Visibility: for ScopeThis the task's own value, otherwise the series'.
+	Visibility *string
 }
 
 type Service struct {
@@ -201,6 +208,11 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 	if err != nil {
 		return Instance{}, err
 	}
+	if in.Visibility != nil {
+		if err := visibility.Validate("visibility", *in.Visibility); err != nil {
+			return Instance{}, err
+		}
+	}
 	if in.Recurrence != nil {
 		return s.createSeries(ctx, userID, title, in, categoryIDs)
 	}
@@ -209,7 +221,7 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 	err = s.store.InTx(ctx, func(q *store.Queries) error {
 		id, err := q.CreateInstance(ctx, store.CreateInstanceParams{
 			UserID: userID, Title: title, Description: in.Description,
-			PlannedStart: &in.PlannedStart, PlannedEnd: &in.PlannedEnd,
+			PlannedStart: &in.PlannedStart, PlannedEnd: &in.PlannedEnd, Visibility: in.Visibility,
 		})
 		if err != nil {
 			return fmt.Errorf("create instance: %w", err)
@@ -227,6 +239,11 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, in CreateInput) 
 // updated task; for ScopeFollowing and ScopeAll the series is rewritten and nil
 // is returned, because the occurrences are re-created lazily.
 func (s *Service) Update(ctx context.Context, userID, id uuid.UUID, scope Scope, in UpdateInput) (*Instance, error) {
+	if in.Visibility != nil {
+		if err := visibility.Validate("visibility", *in.Visibility); err != nil {
+			return nil, err
+		}
+	}
 	var out *Instance
 	err := s.store.InTx(ctx, func(q *store.Queries) error {
 		// Series first, then the row: the same order everywhere, so edits cannot deadlock.
@@ -316,7 +333,20 @@ func updateInstance(ctx context.Context, q *store.Queries, userID uuid.UUID, cur
 			return Instance{}, err
 		}
 	}
+	if in.Visibility != nil {
+		err := q.SetInstanceVisibility(ctx, store.SetInstanceVisibilityParams{ID: cur.ID, UserID: userID, Visibility: in.Visibility})
+		if err != nil {
+			return Instance{}, fmt.Errorf("set visibility: %w", err)
+		}
+	}
 	return get(ctx, q, userID, cur.ID)
+}
+
+// onlyVisibility reports whether the edit changes nothing but the visibility.
+func onlyVisibility(in UpdateInput) bool {
+	rest := in
+	rest.Visibility = nil
+	return in.Visibility != nil && rest == UpdateInput{}
 }
 
 // Delete removes an occurrence or a one-off task. Deleting one occurrence of a
@@ -388,7 +418,7 @@ func fromRow(r store.InstanceDetail, threshold int) Instance {
 		ID: r.ID, Title: r.Title, Description: r.Description,
 		PlannedStart: r.PlannedStart, PlannedEnd: r.PlannedEnd,
 		ActualStart: r.ActualStart, ActualEnd: r.ActualEnd,
-		Status: r.Status, Comment: r.Comment, CategoryIDs: r.CategoryIds,
+		Status: r.Status, Comment: r.Comment, CategoryIDs: r.CategoryIds, Visibility: r.Visibility,
 		SeriesID:        nullUUIDPtr(r.SeriesID),
 		HabitID:         nullUUIDPtr(r.HabitID),
 		RescheduledFrom: link(r.FromID, r.FromPlannedStart, r.FromPlannedEnd),

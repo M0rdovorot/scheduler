@@ -1,6 +1,7 @@
 -- name: CreateSeries :one
-INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, habit_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, habit_id, visibility)
+VALUES (@user_id, @title, @description, @rrule, @dtstart_local, @timezone, @duration_minutes, @habit_id,
+        COALESCE(sqlc.narg('visibility'), (SELECT default_visibility FROM users WHERE id = @user_id)))
 RETURNING *;
 
 -- name: GetSeries :one
@@ -85,3 +86,14 @@ UPDATE task_instances SET original_start = $3 WHERE id = $1 AND user_id = $2;
 -- name: LockSeriesChangesShared :exec
 -- Materialisation may run in parallel with itself, but not with an edit of a series.
 SELECT pg_advisory_xact_lock_shared(hashtextextended('series:' || @user_id::text, 0));
+
+-- name: SetSeriesVisibility :exec
+UPDATE task_series SET visibility = @visibility, updated_at = now()
+WHERE id = @id AND user_id = @user_id;
+
+-- name: ResetInstanceVisibility :exec
+-- An edit of a series' visibility ("all", "following") is for all its occurrences from
+-- `from_start` on (all of them when it is NULL), those with a value of their own included.
+UPDATE task_instances SET visibility = NULL
+WHERE series_id = @series_id AND user_id = @user_id AND visibility IS NOT NULL
+  AND (sqlc.narg('from_start')::timestamptz IS NULL OR original_start >= sqlc.narg('from_start'));

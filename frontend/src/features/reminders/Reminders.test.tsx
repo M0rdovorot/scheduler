@@ -22,6 +22,7 @@ const user: User = {
   slot_minutes: 30,
   default_view: 'day',
   deviation_threshold_minutes: 10,
+  default_visibility: 'private',
 }
 
 const rule = (kind: string, offset: number | null, time: string | null = null) => ({
@@ -401,6 +402,7 @@ describe('the reminders of a task', () => {
     rescheduled_from: null,
     rescheduled_to: null,
     deviations: [],
+    visibility: 'private',
   })
 
   it('goes straight to the task for a one-off task', async () => {

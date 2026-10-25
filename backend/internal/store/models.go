@@ -76,6 +76,7 @@ type InstanceDetail struct {
 	ToPlannedStart   *time.Time
 	ToPlannedEnd     *time.Time
 	HabitID          uuid.NullUUID
+	Visibility       string
 }
 
 type Notification struct {
@@ -175,6 +176,7 @@ type TaskInstance struct {
 	ActualEnd         *time.Time
 	Comment           string
 	RescheduledFromID uuid.NullUUID
+	Visibility        *string
 }
 
 type TaskSeries struct {
@@ -189,6 +191,7 @@ type TaskSeries struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	HabitID         uuid.NullUUID
+	Visibility      string
 }
 
 type User struct {
@@ -199,6 +202,7 @@ type User struct {
 	DefaultView               string
 	DeviationThresholdMinutes int32
 	CreatedAt                 time.Time
+	DefaultVisibility         string
 }
 
 type UserIdentity struct {

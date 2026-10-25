@@ -22,6 +22,7 @@ const user: User = {
   slot_minutes: 30,
   default_view: 'day',
   deviation_threshold_minutes: 10,
+  default_visibility: 'private',
 }
 
 let instances: Instance[]
@@ -42,6 +43,7 @@ const timer = (id: string, title: string, startedAt: string): Instance => ({
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 })
 
 function server(req: StubRequest): Response {

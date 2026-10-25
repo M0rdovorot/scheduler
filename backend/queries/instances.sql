@@ -18,8 +18,9 @@ WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'
 FOR UPDATE;
 
 -- name: CreateInstance :one
-INSERT INTO task_instances (user_id, title, description, planned_start, planned_end)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, visibility)
+VALUES (@user_id, @title, @description, @planned_start, @planned_end,
+        COALESCE(sqlc.narg('visibility'), (SELECT default_visibility FROM users WHERE id = @user_id)))
 RETURNING id;
 
 -- name: UpdateInstance :exec
@@ -48,13 +49,19 @@ SET status = $3, actual_start = $4, actual_end = $5, comment = $6, updated_at = 
 WHERE id = $1 AND user_id = $2;
 
 -- name: CreateUnplannedInstance :one
-INSERT INTO task_instances (user_id, title, description, status, actual_start, actual_end)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO task_instances (user_id, title, description, status, actual_start, actual_end, visibility)
+VALUES (@user_id, @title, @description, @status, @actual_start, @actual_end,
+        (SELECT default_visibility FROM users WHERE id = @user_id))
 RETURNING id;
 
 -- name: CreateRescheduledInstance :one
-INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, rescheduled_from_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+-- The new task is as visible as the one it replaces.
+INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, rescheduled_from_id, visibility)
+VALUES (@user_id, @title, @description, @planned_start, @planned_end, @rescheduled_from_id,
+        (SELECT COALESCE(src.visibility, ts.visibility, 'private')
+         FROM task_instances src
+         LEFT JOIN task_series ts ON ts.id = src.series_id AND ts.user_id = src.user_id
+         WHERE src.id = @rescheduled_from_id AND src.user_id = @user_id))
 RETURNING id;
 
 -- name: CopyInstanceCategories :exec
@@ -74,3 +81,8 @@ SELECT EXISTS (
 SELECT * FROM instance_details
 WHERE user_id = $1 AND status = 'in_progress'
 ORDER BY actual_start, id;
+
+-- name: SetInstanceVisibility :exec
+-- Its own value for one task; NULL goes back to the series.
+UPDATE task_instances SET visibility = sqlc.narg('visibility'), updated_at = now()
+WHERE id = @id AND user_id = @user_id;

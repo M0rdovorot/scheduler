@@ -79,9 +79,10 @@ func (q *Queries) CopySeriesCategoriesToInstances(ctx context.Context, arg CopyS
 }
 
 const createSeries = `-- name: CreateSeries :one
-INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, habit_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id
+INSERT INTO task_series (user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, habit_id, visibility)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+        COALESCE($9, (SELECT default_visibility FROM users WHERE id = $1)))
+RETURNING id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id, visibility
 `
 
 type CreateSeriesParams struct {
@@ -93,6 +94,7 @@ type CreateSeriesParams struct {
 	Timezone        string
 	DurationMinutes int32
 	HabitID         uuid.NullUUID
+	Visibility      interface{}
 }
 
 func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (TaskSeries, error) {
@@ -105,6 +107,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Tas
 		arg.Timezone,
 		arg.DurationMinutes,
 		arg.HabitID,
+		arg.Visibility,
 	)
 	var i TaskSeries
 	err := row.Scan(
@@ -119,6 +122,7 @@ func (q *Queries) CreateSeries(ctx context.Context, arg CreateSeriesParams) (Tas
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.HabitID,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -174,7 +178,7 @@ func (q *Queries) DeleteSeriesInstances(ctx context.Context, arg DeleteSeriesIns
 }
 
 const getSeries = `-- name: GetSeries :one
-SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id FROM task_series WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id, visibility FROM task_series WHERE id = $1 AND user_id = $2
 `
 
 type GetSeriesParams struct {
@@ -197,12 +201,13 @@ func (q *Queries) GetSeries(ctx context.Context, arg GetSeriesParams) (TaskSerie
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.HabitID,
+		&i.Visibility,
 	)
 	return i, err
 }
 
 const listSeries = `-- name: ListSeries :many
-SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id FROM task_series WHERE user_id = $1 ORDER BY created_at, id
+SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id, visibility FROM task_series WHERE user_id = $1 ORDER BY created_at, id
 `
 
 func (q *Queries) ListSeries(ctx context.Context, userID uuid.UUID) ([]TaskSeries, error) {
@@ -226,6 +231,7 @@ func (q *Queries) ListSeries(ctx context.Context, userID uuid.UUID) ([]TaskSerie
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.HabitID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -350,6 +356,25 @@ func (q *Queries) MoveSeriesInstances(ctx context.Context, arg MoveSeriesInstanc
 	return err
 }
 
+const resetInstanceVisibility = `-- name: ResetInstanceVisibility :exec
+UPDATE task_instances SET visibility = NULL
+WHERE series_id = $1 AND user_id = $2 AND visibility IS NOT NULL
+  AND ($3::timestamptz IS NULL OR original_start >= $3)
+`
+
+type ResetInstanceVisibilityParams struct {
+	SeriesID  uuid.NullUUID
+	UserID    uuid.UUID
+	FromStart *time.Time
+}
+
+// An edit of a series' visibility ("all", "following") is for all its occurrences from
+// `from_start` on (all of them when it is NULL), those with a value of their own included.
+func (q *Queries) ResetInstanceVisibility(ctx context.Context, arg ResetInstanceVisibilityParams) error {
+	_, err := q.db.Exec(ctx, resetInstanceVisibility, arg.SeriesID, arg.UserID, arg.FromStart)
+	return err
+}
+
 const setInstanceOriginalStart = `-- name: SetInstanceOriginalStart :exec
 UPDATE task_instances SET original_start = $3 WHERE id = $1 AND user_id = $2
 `
@@ -362,6 +387,22 @@ type SetInstanceOriginalStartParams struct {
 
 func (q *Queries) SetInstanceOriginalStart(ctx context.Context, arg SetInstanceOriginalStartParams) error {
 	_, err := q.db.Exec(ctx, setInstanceOriginalStart, arg.ID, arg.UserID, arg.OriginalStart)
+	return err
+}
+
+const setSeriesVisibility = `-- name: SetSeriesVisibility :exec
+UPDATE task_series SET visibility = $1, updated_at = now()
+WHERE id = $2 AND user_id = $3
+`
+
+type SetSeriesVisibilityParams struct {
+	Visibility string
+	ID         uuid.UUID
+	UserID     uuid.UUID
+}
+
+func (q *Queries) SetSeriesVisibility(ctx context.Context, arg SetSeriesVisibilityParams) error {
+	_, err := q.db.Exec(ctx, setSeriesVisibility, arg.Visibility, arg.ID, arg.UserID)
 	return err
 }
 

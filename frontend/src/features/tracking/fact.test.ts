@@ -29,6 +29,7 @@ const base: Instance = {
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 }
 const NOW = new Date('2026-10-14T12:00:00Z')
 const with_ = (over: Partial<Instance>): Instance => ({ ...base, ...over })

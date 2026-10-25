@@ -254,7 +254,7 @@ func (q *Queries) ListHabitPlacements(ctx context.Context, userID uuid.UUID) ([]
 }
 
 const listHabitSeries = `-- name: ListHabitSeries :many
-SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id FROM task_series WHERE habit_id = $1 AND user_id = $2 ORDER BY created_at DESC, id
+SELECT id, user_id, title, description, rrule, dtstart_local, timezone, duration_minutes, created_at, updated_at, habit_id, visibility FROM task_series WHERE habit_id = $1 AND user_id = $2 ORDER BY created_at DESC, id
 `
 
 type ListHabitSeriesParams struct {
@@ -283,6 +283,7 @@ func (q *Queries) ListHabitSeries(ctx context.Context, arg ListHabitSeriesParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.HabitID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}

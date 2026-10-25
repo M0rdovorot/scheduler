@@ -1340,7 +1340,7 @@ components:
       x-enum-varnames: [Slot5, Slot10, Slot15, Slot30, Slot60]
     User:
       type: object
-      required: [id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes]
+      required: [id, display_name, timezone, slot_minutes, default_view, deviation_threshold_minutes, default_visibility]
       properties:
         id:
           type: string
@@ -1358,6 +1358,8 @@ components:
           type: integer
           minimum: 0
           maximum: 1440
+        default_visibility:
+          $ref: "#/components/schemas/Visibility"
     SettingsPatch:
       type: object
       properties:
@@ -1371,6 +1373,14 @@ components:
           type: integer
           minimum: 0
           maximum: 1440
+        default_visibility:
+          $ref: "#/components/schemas/Visibility"
+    Visibility:
+      type: string
+      enum: [partners, granted, private]
+      description: |
+        Who sees the title of a task: `partners` all partners, `granted` the partners who were
+        given access to tasks, `private` nobody. The others see only that the time is busy.
     Category:
       type: object
       required: [id, parent_id, name, color, archived_at]
@@ -1471,6 +1481,7 @@ components:
         - category_ids
         - series_id
         - habit_id
+        - visibility
         - rescheduled_from
         - rescheduled_to
         - deviations
@@ -1533,6 +1544,10 @@ components:
           description: Computed from the plan, the fact and the user's threshold; never stored
           items:
             $ref: "#/components/schemas/Deviation"
+        visibility:
+          allOf:
+            - $ref: "#/components/schemas/Visibility"
+          description: The task's own value, or the series' when the task has none
     TrackingPatch:
       type: object
       properties:
@@ -1613,6 +1628,10 @@ components:
             format: uuid
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        visibility:
+          allOf:
+            - $ref: "#/components/schemas/Visibility"
+          description: Defaults to `default_visibility` of the user
     UpdateInstanceRequest:
       type: object
       properties:
@@ -1639,6 +1658,14 @@ components:
             format: uuid
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        visibility:
+          allOf:
+            - $ref: "#/components/schemas/Visibility"
+          description: |
+            With scope `this` the task's own value; with `following` and `all` the value of the
+            series, which also takes the values of their own off the occurrences concerned and
+            does not re-create them. As any edit of one occurrence, a value of its own sets
+            the occurrence apart from the series (`is_detached`).
     Recurrence:
       type: object
       required: [rrule]

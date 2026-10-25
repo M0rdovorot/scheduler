@@ -21,6 +21,7 @@ const user: User = {
   slot_minutes: 30,
   default_view: 'day',
   deviation_threshold_minutes: 10,
+  default_visibility: 'private',
 }
 
 const category = (
@@ -101,6 +102,7 @@ const report = (over: Partial<StatsReport> = {}): StatsReport => ({
       rescheduled_from: null,
       rescheduled_to: null,
       deviations: [],
+      visibility: 'private',
     },
   ],
   ...over,

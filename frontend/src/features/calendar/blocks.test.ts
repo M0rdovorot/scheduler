@@ -21,6 +21,7 @@ const task = (over: Partial<Instance>): Instance => ({
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
   ...over,
 })
 

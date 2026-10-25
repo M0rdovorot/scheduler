@@ -13,6 +13,7 @@ import (
 
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/validation"
+	"github.com/m0rdovorot/scheduler/backend/internal/visibility"
 )
 
 const (
@@ -38,6 +39,8 @@ type User struct {
 	SlotMinutes               int
 	DefaultView               string
 	DeviationThresholdMinutes int
+	// DefaultVisibility is the visibility of new tasks.
+	DefaultVisibility string
 }
 
 func FromRow(r store.User) User {
@@ -48,6 +51,7 @@ func FromRow(r store.User) User {
 		SlotMinutes:               int(r.SlotMinutes),
 		DefaultView:               r.DefaultView,
 		DeviationThresholdMinutes: int(r.DeviationThresholdMinutes),
+		DefaultVisibility:         r.DefaultVisibility,
 	}
 }
 
@@ -57,6 +61,7 @@ type SettingsPatch struct {
 	SlotMinutes               *int
 	DefaultView               *string
 	DeviationThresholdMinutes *int
+	DefaultVisibility         *string
 }
 
 // ValidateTimezone accepts only IANA zone names that the runtime knows.
@@ -88,6 +93,11 @@ func (p SettingsPatch) Validate() error {
 			Message: fmt.Sprintf("must be between 0 and %d", MaxDeviationThresholdMinutes),
 		}
 	}
+	if p.DefaultVisibility != nil {
+		if err := visibility.Validate("default_visibility", *p.DefaultVisibility); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -115,9 +125,10 @@ func (s *Service) UpdateSettings(ctx context.Context, id uuid.UUID, patch Settin
 		return User{}, err
 	}
 	params := store.UpdateUserSettingsParams{
-		ID:          id,
-		Timezone:    patch.Timezone,
-		DefaultView: patch.DefaultView,
+		ID:                id,
+		Timezone:          patch.Timezone,
+		DefaultView:       patch.DefaultView,
+		DefaultVisibility: patch.DefaultVisibility,
 	}
 	if patch.SlotMinutes != nil {
 		v := int32(*patch.SlotMinutes)

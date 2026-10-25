@@ -197,6 +197,7 @@ func (s *Server) UpdateMySettings(ctx context.Context, req UpdateMySettingsReque
 		str := string(*v)
 		patch.DefaultView = &str
 	}
+	patch.DefaultVisibility = visibilityPtr(req.Body.DefaultVisibility)
 
 	u, err := s.Users.UpdateSettings(ctx, userID(ctx), patch)
 	var verr *validation.Error
@@ -219,6 +220,7 @@ func toUser(u user.User) User {
 		SlotMinutes:               SlotMinutes(u.SlotMinutes),
 		DefaultView:               ViewMode(u.DefaultView),
 		DeviationThresholdMinutes: u.DeviationThresholdMinutes,
+		DefaultVisibility:         Visibility(u.DefaultVisibility),
 	}
 }
 

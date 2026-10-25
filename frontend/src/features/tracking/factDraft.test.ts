@@ -21,6 +21,7 @@ const base: Instance = {
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 }
 const done: Instance = {
   ...base,

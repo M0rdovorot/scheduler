@@ -19,6 +19,7 @@ const task: Instance = {
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 }
 
 describe('defaultReschedule', () => {

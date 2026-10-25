@@ -45,6 +45,7 @@ const task = (
   rescheduled_from: null,
   rescheduled_to: null,
   deviations: [],
+  visibility: 'private',
 })
 
 const category = (id: string, name: string, color: string): Category => ({
@@ -225,6 +226,7 @@ beforeEach(() => {
     slot_minutes: 30,
     default_view: 'day',
     deviation_threshold_minutes: 10,
+    default_visibility: 'private',
   }
   instances = []
   categories = []

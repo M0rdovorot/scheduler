@@ -77,8 +77,9 @@ func (q *Queries) CountUserCategories(ctx context.Context, arg CountUserCategori
 }
 
 const createInstance = `-- name: CreateInstance :one
-INSERT INTO task_instances (user_id, title, description, planned_start, planned_end)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, visibility)
+VALUES ($1, $2, $3, $4, $5,
+        COALESCE($6, (SELECT default_visibility FROM users WHERE id = $1)))
 RETURNING id
 `
 
@@ -88,6 +89,7 @@ type CreateInstanceParams struct {
 	Description  string
 	PlannedStart *time.Time
 	PlannedEnd   *time.Time
+	Visibility   interface{}
 }
 
 func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) (uuid.UUID, error) {
@@ -97,6 +99,7 @@ func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) 
 		arg.Description,
 		arg.PlannedStart,
 		arg.PlannedEnd,
+		arg.Visibility,
 	)
 	var id uuid.UUID
 	err := row.Scan(&id)
@@ -104,8 +107,12 @@ func (q *Queries) CreateInstance(ctx context.Context, arg CreateInstanceParams) 
 }
 
 const createRescheduledInstance = `-- name: CreateRescheduledInstance :one
-INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, rescheduled_from_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO task_instances (user_id, title, description, planned_start, planned_end, rescheduled_from_id, visibility)
+VALUES ($1, $2, $3, $4, $5, $6,
+        (SELECT COALESCE(src.visibility, ts.visibility, 'private')
+         FROM task_instances src
+         LEFT JOIN task_series ts ON ts.id = src.series_id AND ts.user_id = src.user_id
+         WHERE src.id = $6 AND src.user_id = $1))
 RETURNING id
 `
 
@@ -118,6 +125,7 @@ type CreateRescheduledInstanceParams struct {
 	RescheduledFromID uuid.NullUUID
 }
 
+// The new task is as visible as the one it replaces.
 func (q *Queries) CreateRescheduledInstance(ctx context.Context, arg CreateRescheduledInstanceParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createRescheduledInstance,
 		arg.UserID,
@@ -133,8 +141,9 @@ func (q *Queries) CreateRescheduledInstance(ctx context.Context, arg CreateResch
 }
 
 const createUnplannedInstance = `-- name: CreateUnplannedInstance :one
-INSERT INTO task_instances (user_id, title, description, status, actual_start, actual_end)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO task_instances (user_id, title, description, status, actual_start, actual_end, visibility)
+VALUES ($1, $2, $3, $4, $5, $6,
+        (SELECT default_visibility FROM users WHERE id = $1))
 RETURNING id
 `
 
@@ -179,7 +188,7 @@ func (q *Queries) DeleteInstance(ctx context.Context, arg DeleteInstanceParams) 
 }
 
 const getInstance = `-- name: GetInstance :one
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details WHERE id = $1 AND user_id = $2
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id, visibility FROM instance_details WHERE id = $1 AND user_id = $2
 `
 
 type GetInstanceParams struct {
@@ -210,6 +219,7 @@ func (q *Queries) GetInstance(ctx context.Context, arg GetInstanceParams) (Insta
 		&i.ToPlannedStart,
 		&i.ToPlannedEnd,
 		&i.HabitID,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -235,7 +245,7 @@ func (q *Queries) HasLiveReplacement(ctx context.Context, arg HasLiveReplacement
 }
 
 const listInstances = `-- name: ListInstances :many
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id, visibility FROM instance_details
 WHERE user_id = $1
   AND status <> 'cancelled'
   AND ((planned_start < $2 AND planned_end > $3)
@@ -286,6 +296,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 			&i.ToPlannedStart,
 			&i.ToPlannedEnd,
 			&i.HabitID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -298,7 +309,7 @@ func (q *Queries) ListInstances(ctx context.Context, arg ListInstancesParams) ([
 }
 
 const listRunningInstances = `-- name: ListRunningInstances :many
-SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id FROM instance_details
+SELECT id, user_id, title, description, planned_start, planned_end, actual_start, actual_end, status, comment, series_id, category_ids, from_id, from_planned_start, from_planned_end, to_id, to_planned_start, to_planned_end, habit_id, visibility FROM instance_details
 WHERE user_id = $1 AND status = 'in_progress'
 ORDER BY actual_start, id
 `
@@ -333,6 +344,7 @@ func (q *Queries) ListRunningInstances(ctx context.Context, userID uuid.UUID) ([
 			&i.ToPlannedStart,
 			&i.ToPlannedEnd,
 			&i.HabitID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -345,7 +357,7 @@ func (q *Queries) ListRunningInstances(ctx context.Context, userID uuid.UUID) ([
 }
 
 const lockInstance = `-- name: LockInstance :one
-SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached, actual_start, actual_end, comment, rescheduled_from_id FROM task_instances
+SELECT id, user_id, title, description, planned_start, planned_end, status, created_at, updated_at, series_id, original_start, is_detached, actual_start, actual_end, comment, rescheduled_from_id, visibility FROM task_instances
 WHERE id = $1 AND user_id = $2 AND status <> 'cancelled'
 FOR UPDATE
 `
@@ -376,8 +388,26 @@ func (q *Queries) LockInstance(ctx context.Context, arg LockInstanceParams) (Tas
 		&i.ActualEnd,
 		&i.Comment,
 		&i.RescheduledFromID,
+		&i.Visibility,
 	)
 	return i, err
+}
+
+const setInstanceVisibility = `-- name: SetInstanceVisibility :exec
+UPDATE task_instances SET visibility = $1, updated_at = now()
+WHERE id = $2 AND user_id = $3
+`
+
+type SetInstanceVisibilityParams struct {
+	Visibility *string
+	ID         uuid.UUID
+	UserID     uuid.UUID
+}
+
+// Its own value for one task; NULL goes back to the series.
+func (q *Queries) SetInstanceVisibility(ctx context.Context, arg SetInstanceVisibilityParams) error {
+	_, err := q.db.Exec(ctx, setInstanceVisibility, arg.Visibility, arg.ID, arg.UserID)
+	return err
 }
 
 const setTracking = `-- name: SetTracking :exec

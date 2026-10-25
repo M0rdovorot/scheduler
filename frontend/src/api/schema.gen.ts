@@ -954,13 +954,21 @@ export interface components {
             slot_minutes: components["schemas"]["SlotMinutes"];
             default_view: components["schemas"]["ViewMode"];
             deviation_threshold_minutes: number;
+            default_visibility: components["schemas"]["Visibility"];
         };
         SettingsPatch: {
             timezone?: string;
             slot_minutes?: components["schemas"]["SlotMinutes"];
             default_view?: components["schemas"]["ViewMode"];
             deviation_threshold_minutes?: number;
+            default_visibility?: components["schemas"]["Visibility"];
         };
+        /**
+         * @description Who sees the title of a task: `partners` all partners, `granted` the partners who were
+         *     given access to tasks, `private` nobody. The others see only that the time is busy.
+         * @enum {string}
+         */
+        Visibility: "partners" | "granted" | "private";
         Category: {
             /** Format: uuid */
             id: string;
@@ -1057,6 +1065,8 @@ export interface components {
             rescheduled_to: components["schemas"]["InstanceLink"] | null;
             /** @description Computed from the plan, the fact and the user's threshold; never stored */
             deviations: components["schemas"]["Deviation"][];
+            /** @description The task's own value, or the series' when the task has none */
+            visibility: components["schemas"]["Visibility"];
         };
         TrackingPatch: {
             /** @enum {string} */
@@ -1102,6 +1112,8 @@ export interface components {
             planned_end: string;
             category_ids?: string[];
             recurrence?: components["schemas"]["Recurrence"];
+            /** @description Defaults to `default_visibility` of the user */
+            visibility?: components["schemas"]["Visibility"];
         };
         UpdateInstanceRequest: {
             title?: string;
@@ -1114,6 +1126,13 @@ export interface components {
             /** @description Replaces the whole set; an empty array removes all categories */
             category_ids?: string[];
             recurrence?: components["schemas"]["Recurrence"];
+            /**
+             * @description With scope `this` the task's own value; with `following` and `all` the value of the
+             *     series, which also takes the values of their own off the occurrences concerned and
+             *     does not re-create them. As any edit of one occurrence, a value of its own sets
+             *     the occurrence apart from the series (`is_detached`).
+             */
+            visibility?: components["schemas"]["Visibility"];
         };
         /**
          * @description Repeat rule of a regular task. The first occurrence slot of a new task is its

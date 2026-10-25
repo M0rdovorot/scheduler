@@ -71,6 +71,7 @@ beforeEach(() => {
     slot_minutes: 30,
     default_view: 'day',
     deviation_threshold_minutes: 10,
+    default_visibility: 'private',
   }
   useAuthStore.setState({ token: null, signedOut: false })
   cookie = false

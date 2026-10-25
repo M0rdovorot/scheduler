@@ -344,6 +344,27 @@ func (e ViewMode) Valid() bool {
 	}
 }
 
+// Defines values for Visibility.
+const (
+	Granted  Visibility = "granted"
+	Partners Visibility = "partners"
+	Private  Visibility = "private"
+)
+
+// Valid indicates whether the value is a known member of the Visibility enum.
+func (e Visibility) Valid() bool {
+	switch e {
+	case Granted:
+		return true
+	case Partners:
+		return true
+	case Private:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Scope.
 const (
 	ScopeAll       Scope = "all"
@@ -464,6 +485,9 @@ type CreateTaskRequest struct {
 	// `no_occurrences` (the rule has no occurrence from the start on).
 	Recurrence *Recurrence `json:"recurrence,omitempty"`
 	Title      string      `json:"title"`
+
+	// Visibility Defaults to `default_visibility` of the user
+	Visibility *Visibility `json:"visibility,omitempty"`
 }
 
 // DayCategoryMinutes defines model for DayCategoryMinutes.
@@ -693,6 +717,9 @@ type Instance struct {
 	SeriesId *openapi_types.UUID `json:"series_id"`
 	Status   InstanceStatus      `json:"status"`
 	Title    string              `json:"title"`
+
+	// Visibility The task's own value, or the series' when the task has none
+	Visibility Visibility `json:"visibility"`
 }
 
 // InstanceLink The other half of a reschedule.
@@ -854,7 +881,11 @@ type Session struct {
 
 // SettingsPatch defines model for SettingsPatch.
 type SettingsPatch struct {
-	DefaultView               *ViewMode    `json:"default_view,omitempty"`
+	DefaultView *ViewMode `json:"default_view,omitempty"`
+
+	// DefaultVisibility Who sees the title of a task: `partners` all partners, `granted` the partners who were
+	// given access to tasks, `private` nobody. The others see only that the time is busy.
+	DefaultVisibility         *Visibility  `json:"default_visibility,omitempty"`
 	DeviationThresholdMinutes *int         `json:"deviation_threshold_minutes,omitempty"`
 	SlotMinutes               *SlotMinutes `json:"slot_minutes,omitempty"`
 	Timezone                  *string      `json:"timezone,omitempty"`
@@ -986,11 +1017,21 @@ type UpdateInstanceRequest struct {
 	// `no_occurrences` (the rule has no occurrence from the start on).
 	Recurrence *Recurrence `json:"recurrence,omitempty"`
 	Title      *string     `json:"title,omitempty"`
+
+	// Visibility With scope `this` the task's own value; with `following` and `all` the value of the
+	// series, which also takes the values of their own off the occurrences concerned and
+	// does not re-create them. As any edit of one occurrence, a value of its own sets
+	// the occurrence apart from the series (`is_detached`).
+	Visibility *Visibility `json:"visibility,omitempty"`
 }
 
 // User defines model for User.
 type User struct {
-	DefaultView               ViewMode           `json:"default_view"`
+	DefaultView ViewMode `json:"default_view"`
+
+	// DefaultVisibility Who sees the title of a task: `partners` all partners, `granted` the partners who were
+	// given access to tasks, `private` nobody. The others see only that the time is busy.
+	DefaultVisibility         Visibility         `json:"default_visibility"`
 	DeviationThresholdMinutes int                `json:"deviation_threshold_minutes"`
 	DisplayName               string             `json:"display_name"`
 	Id                        openapi_types.UUID `json:"id"`
@@ -1002,6 +1043,10 @@ type User struct {
 
 // ViewMode defines model for ViewMode.
 type ViewMode string
+
+// Visibility Who sees the title of a task: `partners` all partners, `granted` the partners who were
+// given access to tasks, `private` nobody. The others see only that the time is busy.
+type Visibility string
 
 // WebSession defines model for WebSession.
 type WebSession struct {
