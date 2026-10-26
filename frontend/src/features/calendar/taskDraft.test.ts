@@ -52,7 +52,15 @@ describe('draftForSelection', () => {
       end: '2026-10-14T11:30',
       categoryIds: [],
       repeat: null,
+      visibility: 'private',
     })
+  })
+
+  it('starts with the visibility the user prefers', () => {
+    expect(draftForSelection('2026-10-14', 600, 690, 'partners').visibility).toBe('partners')
+    expect(
+      draftStartingNow(new Date('2026-10-14T07:00:00Z'), '2026-10-14', 30, tz, 'granted'),
+    ).toMatchObject({ visibility: 'granted' })
   })
 
   it('ends at midnight of the next day when the selection reaches the end of the day', () => {
@@ -139,6 +147,7 @@ describe('toCreateRequest', () => {
       planned_start: '2026-10-14T07:00:00.000Z',
       planned_end: '2026-10-14T08:30:00.000Z',
       category_ids: ['c1', 'c2'],
+      visibility: 'private',
     })
   })
 
@@ -176,6 +185,13 @@ describe('toUpdateRequest', () => {
     })
     expect(toUpdateRequest(instance, { ...draft, categoryIds: ['c1'] }, tz)).toEqual({
       category_ids: ['c1'],
+    })
+  })
+
+  it('sends the visibility only when it changed', () => {
+    expect(toUpdateRequest(instance, { ...draft, visibility: 'private' }, tz)).toEqual({})
+    expect(toUpdateRequest(instance, { ...draft, visibility: 'partners' }, tz)).toEqual({
+      visibility: 'partners',
     })
   })
 

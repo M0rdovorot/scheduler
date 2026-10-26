@@ -4,7 +4,7 @@ import { useHabits } from '@/api/habits'
 import { useInstances, useRunningInstances } from '@/api/instances'
 import { useMe } from '@/api/me'
 import { useNow } from '@/lib/useNow'
-import type { Category } from '@/api/types'
+import type { Category, Visibility } from '@/api/types'
 import { UnplannedDialog } from '@/features/tracking/UnplannedDialog'
 import {
   pastUnplanned,
@@ -23,16 +23,25 @@ import type { SlotSelection } from './useSlotSelection'
 export function CalendarPage() {
   const { data: me } = useMe()
   if (!me) return null
-  return <Calendar tz={me.timezone} slot={me.slot_minutes} defaultView={me.default_view} />
+  return (
+    <Calendar
+      tz={me.timezone}
+      slot={me.slot_minutes}
+      defaultView={me.default_view}
+      visibility={me.default_visibility}
+    />
+  )
 }
 
 interface CalendarProps {
   tz: string
   slot: 5 | 10 | 15 | 30 | 60
   defaultView: 'day' | 'three_days' | 'week'
+  /** The visibility new tasks start with. */
+  visibility: Visibility
 }
 
-function Calendar({ tz, slot, defaultView }: CalendarProps) {
+function Calendar({ tz, slot, defaultView, visibility }: CalendarProps) {
   const now = useNow()
   const today = todayIn(tz, now)
   const {
@@ -79,7 +88,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
     setTarget({
       mode: 'create',
       compact: true,
-      draft: draftForSelection(day, range.startMin, range.endMin),
+      draft: draftForSelection(day, range.startMin, range.endMin, visibility),
     })
   }
 
@@ -138,7 +147,7 @@ function Calendar({ tz, slot, defaultView }: CalendarProps) {
           setTarget({
             mode: 'create',
             compact: false,
-            draft: draftStartingNow(new Date(), today, slot, tz),
+            draft: draftStartingNow(new Date(), today, slot, tz, visibility),
           })
         }}
         className="fixed bottom-[max(1rem,var(--safe-bottom))] right-4 z-20 size-14 rounded-full bg-accent text-3xl leading-none text-accent-fg shadow-lg"

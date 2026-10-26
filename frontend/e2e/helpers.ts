@@ -15,9 +15,20 @@ export interface Api {
   del: (path: string) => Promise<void>
 }
 
-/** Signs in as the dev user, the same account the app uses in the browser. */
-export async function apiLogin(request: APIRequestContext): Promise<Api> {
-  const login = await request.post('/api/v1/auth/dev', { data: { timezone: TZ } })
+/**
+ * Signs in as the dev user, the same account the app uses in the browser. With a `key`
+ * it is another dev user, for tests that need a second person.
+ */
+export async function apiLogin(
+  request: APIRequestContext,
+  other?: { key: string; displayName: string },
+): Promise<Api> {
+  const login = await request.post('/api/v1/auth/dev', {
+    data: {
+      timezone: TZ,
+      ...(other ? { key: other.key, display_name: other.displayName } : {}),
+    },
+  })
   expect(login.ok()).toBe(true)
   const { token } = (await login.json()) as { token: string }
   const headers = { Authorization: `Bearer ${token}` }
@@ -47,6 +58,8 @@ export async function resetData(api: Api) {
   }
   const habits = (await api.get('/habits')) as { id: string }[]
   for (const h of habits) await api.del(`/habits/${h.id}`)
+  const partners = (await api.get('/partners')) as { id: string }[]
+  for (const p of partners) await api.del(`/partners/${p.id}`)
   const categories = (await api.get('/categories')) as { id: string; parent_id: string | null }[]
   for (const c of categories.filter((c) => c.parent_id === null))
     await api.del(`/categories/${c.id}`)
@@ -58,7 +71,12 @@ export async function resetData(api: Api) {
       { kind: 'after_end', offset_minutes: 0, time_of_day: null },
     ],
   })
-  await api.patch('/me/settings', { slot_minutes: 30, default_view: 'day', timezone: TZ })
+  await api.patch('/me/settings', {
+    slot_minutes: 30,
+    default_view: 'day',
+    timezone: TZ,
+    default_visibility: 'private',
+  })
 }
 
 export async function createTask(

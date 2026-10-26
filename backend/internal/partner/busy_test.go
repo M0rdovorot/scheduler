@@ -280,3 +280,22 @@ func TestFreeIntervals(t *testing.T) {
 		})
 	}
 }
+
+func TestHabitSeriesStaysPrivateWhateverTheDefault(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if _, err := e.pool.Exec(ctx, `UPDATE users SET default_visibility = 'partners'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.habits.Create(ctx, e.a, habit.Input{
+		Title: "Лекарство", Kind: habit.Boolean, Color: "#3b82f6", Schedule: habit.Schedule{Frequency: habit.Daily},
+		Placement: &habit.Placement{Time: "09:00", DurationMinutes: 15},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Were it open, the occurrences that outlive a deleted habit would show their title to all.
+	var got string
+	if err := e.pool.QueryRow(ctx, `SELECT visibility FROM task_series WHERE habit_id IS NOT NULL`).Scan(&got); err != nil || got != "private" {
+		t.Errorf("visibility of the habit series = %q, %v; want private", got, err)
+	}
+}

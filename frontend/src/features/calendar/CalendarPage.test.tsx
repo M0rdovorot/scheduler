@@ -489,6 +489,43 @@ describe('calendar', () => {
     expect(Object.keys(mutations()[0]!.body as object)).toEqual(['title'])
   })
 
+  it('starts a new task with the visibility from the settings and sends the choice', async () => {
+    user.default_visibility = 'partners'
+    const ui = userEvent.setup()
+    renderCalendar()
+    await ui.click(await screen.findByRole('button', { name: 'Новое дело' }))
+    const form = within(await dialog())
+
+    const radio = (name: RegExp) => form.getByRole('radio', { name }) as HTMLInputElement
+    expect(radio(/Все партнёры/).checked).toBe(true)
+    await ui.type(form.getByLabelText('Название'), 'Встреча')
+    await ui.click(radio(/Только я/))
+    await ui.click(form.getByRole('button', { name: 'Создать' }))
+
+    await screen.findByRole('button', { name: /Встреча/ })
+    expect(mutations()[0]?.body).toMatchObject({ title: 'Встреча', visibility: 'private' })
+  })
+
+  it('changes only the visibility of a task when only that is edited', async () => {
+    instances = [task('t1', 'Бег', '2026-10-14T07:00:00Z', '2026-10-14T08:00:00Z')]
+    const ui = userEvent.setup()
+    renderCalendar()
+
+    await ui.click(await screen.findByRole('button', { name: /Бег/ }))
+    const form = within(await dialog())
+    expect((form.getByRole('radio', { name: /Только я/ }) as HTMLInputElement).checked).toBe(true)
+    await ui.click(form.getByRole('radio', { name: /Разрешённые партнёры/ }))
+    await ui.click(form.getByRole('button', { name: 'Сохранить' }))
+
+    await vi.waitFor(() => expect(mutations()).toHaveLength(1))
+    expect(mutations()[0]).toMatchObject({
+      method: 'PATCH',
+      path: '/instances/t1',
+      body: { visibility: 'granted' },
+    })
+    expect(Object.keys(mutations()[0]!.body as object)).toEqual(['visibility'])
+  })
+
   it('deletes only after confirmation', async () => {
     instances = [task('t1', 'Бег', '2026-10-14T07:00:00Z', '2026-10-14T08:00:00Z')]
     const ui = userEvent.setup()

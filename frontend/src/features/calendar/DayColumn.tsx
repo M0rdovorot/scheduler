@@ -24,6 +24,8 @@ interface DayColumnProps {
   nowMin: number | null
   /** Narrow column: see EventBlock. */
   dense: boolean
+  /** Nothing can be selected: the column only shows (a partner's calendar). */
+  readOnly?: boolean
   onSelect: (day: Day, selection: SlotSelection) => void
   onOpen: (instance: Instance) => void
 }
@@ -42,6 +44,7 @@ export function DayColumn({
   habitColors,
   nowMin,
   dense,
+  readOnly = false,
   onSelect,
   onOpen,
 }: DayColumnProps) {
@@ -75,7 +78,7 @@ export function DayColumn({
       data-day={day}
       className="relative min-w-0 flex-1 touch-pan-y select-none border-l border-separator [-webkit-touch-callout:none]"
       style={{ height: dayHeightPx(slot), ...slotBackground(slot, lineColor, hourLineColor) }}
-      {...handlers}
+      {...(readOnly ? {} : handlers)}
     >
       {placed.map(({ block, visualEnd, place }) => {
         const { instance, stripe } = block
@@ -90,7 +93,7 @@ export function DayColumn({
               height={(visualEnd - block.seg.startMin) * ppm}
               column={place.column}
               columns={place.columns}
-              unmarked={block.kind === 'plan' && isUnmarked(instance, now)}
+              unmarked={!readOnly && block.kind === 'plan' && isUnmarked(instance, now)}
               dense={dense}
               details={detailLines(
                 block,

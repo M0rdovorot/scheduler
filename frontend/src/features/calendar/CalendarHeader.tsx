@@ -134,6 +134,12 @@ export function CalendarHeader({
               <Link to="/categories" className="block rounded-lg px-3 py-2 hover:bg-surface">
                 Категории
               </Link>
+              <Link to="/partners" className="block rounded-lg px-3 py-2 hover:bg-surface">
+                Партнёры
+              </Link>
+              <Link to="/free-time" className="block rounded-lg px-3 py-2 hover:bg-surface">
+                Свободное время
+              </Link>
               <Link to="/settings" className="block rounded-lg px-3 py-2 hover:bg-surface">
                 Настройки
               </Link>

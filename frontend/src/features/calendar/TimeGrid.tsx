@@ -17,6 +17,8 @@ interface TimeGridProps {
   instances: readonly Instance[]
   categoriesById: ReadonlyMap<string, Category>
   habitColors: ReadonlyMap<string, string>
+  /** Nothing can be selected: the grid only shows. */
+  readOnly?: boolean
   onSelect: (day: Day, selection: SlotSelection) => void
   onOpen: (instance: Instance) => void
   onOpenDay: (day: Day) => void
@@ -34,6 +36,7 @@ export function TimeGrid({
   instances,
   categoriesById,
   habitColors,
+  readOnly = false,
   onSelect,
   onOpen,
   onOpenDay,
@@ -106,6 +109,7 @@ export function TimeGrid({
               habitColors={habitColors}
               nowMin={day === today ? nowMin : null}
               dense={days.length > 3}
+              readOnly={readOnly}
               onSelect={onSelect}
               onOpen={onOpen}
             />

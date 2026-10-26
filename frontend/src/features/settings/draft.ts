@@ -1,4 +1,4 @@
-import type { SettingsPatch, SlotMinutes, User, ViewMode } from '@/api/types'
+import type { SettingsPatch, SlotMinutes, User, ViewMode, Visibility } from '@/api/types'
 import { normalizeTimeZone } from '@/lib/timezone'
 
 export const slotOptions: readonly SlotMinutes[] = [5, 10, 15, 30, 60]
@@ -17,6 +17,7 @@ export interface SettingsDraft {
   slotMinutes: SlotMinutes
   defaultView: ViewMode
   deviationThreshold: string
+  defaultVisibility: Visibility
 }
 
 export type DraftErrors = Partial<Record<'timezone' | 'deviationThreshold', string>>
@@ -27,6 +28,7 @@ export function draftFromUser(user: User): SettingsDraft {
     slotMinutes: user.slot_minutes,
     defaultView: user.default_view,
     deviationThreshold: String(user.deviation_threshold_minutes),
+    defaultVisibility: user.default_visibility,
   }
 }
 
@@ -58,6 +60,9 @@ export function buildSettingsPatch(user: User, draft: SettingsDraft): SettingsPa
   const threshold = parseThreshold(draft.deviationThreshold)
   if (threshold !== null && threshold !== user.deviation_threshold_minutes) {
     patch.deviation_threshold_minutes = threshold
+  }
+  if (draft.defaultVisibility !== user.default_visibility) {
+    patch.default_visibility = draft.defaultVisibility
   }
   return patch
 }

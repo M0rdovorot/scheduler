@@ -11,6 +11,7 @@ import (
 	"github.com/m0rdovorot/scheduler/backend/internal/recurrence"
 	"github.com/m0rdovorot/scheduler/backend/internal/store"
 	"github.com/m0rdovorot/scheduler/backend/internal/validation"
+	"github.com/m0rdovorot/scheduler/backend/internal/visibility"
 )
 
 // ErrNoHabitSeries means the habit is not placed in the grid.
@@ -57,10 +58,14 @@ func CreateHabitSeries(ctx context.Context, q *store.Queries, userID uuid.UUID, 
 	} else if !ok {
 		return noOccurrences()
 	}
+	private := visibility.Private
 	_, err = q.CreateSeries(ctx, store.CreateSeriesParams{
 		UserID: userID, Title: in.Title, Rrule: rule.String(), DtstartLocal: start,
 		Timezone: user.Timezone, DurationMinutes: int32(in.DurationMinutes),
 		HabitID: uuid.NullUUID{UUID: in.HabitID, Valid: true},
+		// Partners see a habit by the access to habits, not by this value. It stays closed so
+		// that the occurrences that outlive a deleted habit do not become visible to everyone.
+		Visibility: &private,
 	})
 	if err != nil {
 		return fmt.Errorf("create habit series: %w", err)

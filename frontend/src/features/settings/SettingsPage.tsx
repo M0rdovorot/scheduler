@@ -3,9 +3,10 @@ import { useId, useState, type FormEvent } from 'react'
 import { useAuthStore } from '@/api/authStore'
 import { useMe, useUpdateSettings } from '@/api/me'
 import { logout } from '@/api/session'
-import type { SlotMinutes, User, ViewMode } from '@/api/types'
+import type { SlotMinutes, User, ViewMode, Visibility } from '@/api/types'
 import { listTimeZones } from '@/lib/timezone'
 import { GlobalReminders } from '@/features/reminders/GlobalReminders'
+import { visibilityOptions } from '@/features/partners/visibility'
 import { usePlatform } from '@/platform/context'
 import {
   buildSettingsPatch,
@@ -147,6 +148,24 @@ function SettingsForm({ user }: { user: User }) {
         {errors.deviationThreshold && (
           <span className="block text-sm text-danger">{errors.deviationThreshold}</span>
         )}
+      </label>
+
+      <label className="block">
+        <span>Кто видит названия новых дел</span>
+        <select
+          className={fieldClass}
+          value={draft.defaultVisibility}
+          onChange={(e) => change({ defaultVisibility: e.target.value as Visibility })}
+        >
+          {visibilityOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-sm text-hint">
+          Для каждого дела и серии это можно изменить. Остальные видят только «занят»
+        </span>
       </label>
 
       <label className="block">

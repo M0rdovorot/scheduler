@@ -19,6 +19,7 @@ describe('draftFromUser', () => {
       slotMinutes: 30,
       defaultView: 'day',
       deviationThreshold: '10',
+      defaultVisibility: 'private',
     })
   })
 })
@@ -26,6 +27,12 @@ describe('draftFromUser', () => {
 describe('buildSettingsPatch', () => {
   it('is empty when nothing changed', () => {
     expect(buildSettingsPatch(user, draftFromUser(user))).toEqual({})
+  })
+
+  it('sends a changed default visibility', () => {
+    expect(
+      buildSettingsPatch(user, { ...draftFromUser(user), defaultVisibility: 'partners' }),
+    ).toEqual({ default_visibility: 'partners' })
   })
 
   it('contains only changed fields', () => {

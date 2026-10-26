@@ -1,4 +1,10 @@
-import type { CreateTaskRequest, Instance, SlotMinutes, UpdateInstanceRequest } from '@/api/types'
+import type {
+  CreateTaskRequest,
+  Instance,
+  SlotMinutes,
+  UpdateInstanceRequest,
+  Visibility,
+} from '@/api/types'
 import {
   validateRepeat,
   toRRule,
@@ -22,6 +28,8 @@ export interface TaskDraft {
   categoryIds: string[]
   /** The repeat rule, or null for a one-off task. */
   repeat: Repeat | null
+  /** Who sees the title (FR-11.5). */
+  visibility: Visibility
 }
 
 export type TaskDraftErrors = Partial<Record<'title' | 'description' | 'start' | 'end', string>> & {
@@ -55,11 +63,17 @@ export function draftFromInstance(
     end: instance.planned_end ? toLocalInput(new Date(instance.planned_end), tz) : '',
     categoryIds: [...instance.category_ids],
     repeat,
+    visibility: instance.visibility,
   }
 }
 
 /** A new task over the slots selected in the grid. */
-export function draftForSelection(day: Day, startMin: number, endMin: number): TaskDraft {
+export function draftForSelection(
+  day: Day,
+  startMin: number,
+  endMin: number,
+  visibility: Visibility = 'private',
+): TaskDraft {
   return {
     title: '',
     description: '',
@@ -67,13 +81,20 @@ export function draftForSelection(day: Day, startMin: number, endMin: number): T
     end: localAt(day, endMin),
     categoryIds: [],
     repeat: null,
+    visibility,
   }
 }
 
 /** A new task for the "+" button: the next slot boundary, one hour long. */
-export function draftStartingNow(now: Date, today: Day, slot: SlotMinutes, tz: string): TaskDraft {
+export function draftStartingNow(
+  now: Date,
+  today: Day,
+  slot: SlotMinutes,
+  tz: string,
+  visibility: Visibility = 'private',
+): TaskDraft {
   const minutes = Math.ceil(wallMinutes(now, today, tz) / slot) * slot
-  return draftForSelection(today, minutes, minutes + 60)
+  return draftForSelection(today, minutes, minutes + 60, visibility)
 }
 
 /** Catches typos such as year 2062 vs 2026 only at the extremes: 2000–2100 is accepted. */
@@ -123,6 +144,7 @@ export function toCreateRequest(draft: TaskDraft, tz: string): CreateTaskRequest
     planned_start: start.toISOString(),
     planned_end: end.toISOString(),
     category_ids: draft.categoryIds,
+    visibility: draft.visibility,
     ...(draft.repeat
       ? { recurrence: { rrule: toRRule(draft.repeat, dayOf(draft.start), tz) } }
       : {}),
@@ -161,6 +183,7 @@ export function toUpdateRequest(
     }
   }
   if (!sameSet(draft.categoryIds, original.category_ids)) patch.category_ids = draft.categoryIds
+  if (draft.visibility !== original.visibility) patch.visibility = draft.visibility
   if (draft.repeat && !sameRepeat(draft.repeat, savedRepeat, dayOf(draft.start), tz)) {
     patch.recurrence = { rrule: toRRule(draft.repeat, dayOf(draft.start), tz) }
   }

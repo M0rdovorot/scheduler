@@ -4,6 +4,7 @@ import type { Category, Instance, Scope, Series } from '@/api/types'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Dialog } from '@/components/Dialog'
 import { CategoryPicker } from '@/features/categories/CategoryPicker'
+import { VisibilityField } from '@/features/partners/VisibilityField'
 import { TaskReminders } from '@/features/reminders/TaskReminders'
 import { RepeatEditor } from '@/features/recurrence/RepeatEditor'
 import { describeRepeat, fromRRule } from '@/features/recurrence/repeat'
@@ -356,6 +357,17 @@ function TaskFormBody({
                     />
                   </div>
                 </fieldset>
+
+                {inHabit ? (
+                  <p className="text-sm text-hint">
+                    Название привычки видят партнёры, которым вы открыли привычки.
+                  </p>
+                ) : (
+                  <VisibilityField
+                    value={draft.visibility}
+                    onChange={(visibility) => setDraft({ ...draft, visibility })}
+                  />
+                )}
               </>
             )}
 
